@@ -83,7 +83,7 @@ export function Hero() {
             <div className="absolute top-20 left-10 w-64 h-64 bg-primary/5 rounded-full blur-3xl animate-pulse-glow" style={{ animationDelay: '0s' }} />
             <div className="absolute bottom-20 right-10 w-96 h-96 bg-viz-purple/5 rounded-full blur-3xl animate-pulse-glow" style={{ animationDelay: '1s' }} />
 
-            <div className="container mx-auto px-4 min-h-[calc(100vh-80px)] flex flex-col justify-center py-16 md:py-0">
+            <div className="container mx-auto px-4 min-h-screen flex flex-col justify-center pt-24 pb-12 md:pb-0">
                 <div className="max-w-4xl mx-auto text-center space-y-8">
                     {/* Badge */}
                     <div className="flex justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -123,7 +123,7 @@ export function Hero() {
                             <div className="p-8 rounded-2xl bg-card/50 backdrop-blur-sm border border-border/50 shadow-2xl space-y-4 hover:border-primary/20 transition-colors duration-500">
                                 {/* Repository URL Input */}
                                 <div className="space-y-2">
-                                    <Label htmlFor="repo" className="text-sm font-medium flex items-center gap-2">
+                                    <Label htmlFor="repo" className="text-sm font-medium flex items-center justify-center gap-2">
                                         <Github className="w-4 h-4 text-primary" />
                                         GitHub Repository URL
                                     </Label>
@@ -146,7 +146,7 @@ export function Hero() {
                                     <button
                                         type="button"
                                         onClick={() => setShowTokenInput(!showTokenInput)}
-                                        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                                        className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mx-auto"
                                     >
                                         {showTokenInput ? (
                                             <ChevronUp className="w-4 h-4" />
