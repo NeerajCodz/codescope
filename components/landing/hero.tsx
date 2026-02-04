@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sparkles, Github, Key, Zap, ChevronDown, ChevronUp } from 'lucide-react';
+import Image from 'next/image';
 
 export function Hero() {
     const router = useRouter();
@@ -96,8 +97,16 @@ export function Hero() {
                     </div>
 
                     {/* Title */}
-                    <h1 className="text-5xl md:text-7xl font-bold tracking-tight animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
-                        <span className="bg-gradient-to-r from-cyan-400 via-blue-500 to-cyan-600 bg-clip-text text-transparent pb-2 block">
+                    <h1 className="text-5xl md:text-7xl font-bold tracking-tight animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100 flex items-center justify-center gap-4">
+                        <div className="relative w-12 h-12 md:w-20 md:h-20 animate-pulse-glow" style={{ animationDuration: '3s' }}>
+                            <Image
+                                src="/favicon.ico"
+                                alt="CodeScope Logo"
+                                fill
+                                className="object-contain"
+                            />
+                        </div>
+                        <span className="bg-gradient-to-r from-cyan-400 via-blue-500 to-cyan-600 bg-clip-text text-transparent pb-2">
                             CodeScope
                         </span>
                     </h1>

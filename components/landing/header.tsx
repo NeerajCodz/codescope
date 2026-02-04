@@ -1,7 +1,8 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Github, Sparkles } from 'lucide-react';
+import { Github } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 
 export function Header() {
@@ -19,8 +20,13 @@ export function Header() {
     return (
         <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-background/50 backdrop-blur-sm border-b border-border/40">
             <Link href="/" className="flex items-center gap-2 group">
-                <div className="p-1 rounded-md bg-primary/10 group-hover:bg-primary/20 transition-colors">
-                    <Sparkles className="w-5 h-5 text-primary" />
+                <div className="relative w-8 h-8 rounded-md overflow-hidden transition-transform group-hover:scale-110">
+                    <Image
+                        src="/favicon.ico"
+                        alt="CodeScope Logo"
+                        fill
+                        className="object-contain"
+                    />
                 </div>
                 <span className="text-xl font-bold bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
                     CodeScope
