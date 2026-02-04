@@ -1,0 +1,107 @@
+'use client';
+
+import React, { useMemo } from 'react';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import { FunctionDef } from '@/types';
+import { Code } from 'lucide-react';
+
+interface FunctionDetailsModalProps {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    fn: FunctionDef | null;
+}
+
+export function FunctionDetailsModal({ open, onOpenChange, fn }: FunctionDetailsModalProps) {
+    if (!fn) return null;
+
+    const callers = useMemo(() => {
+        const names = new Set<string>();
+        fn.callSites?.forEach(cs => {
+            if (cs.caller) names.add(cs.caller);
+        });
+        return Array.from(names);
+    }, [fn]);
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Code className="w-5 h-5" />
+                        {fn.name}({(fn.params || []).join(', ')})
+                    </DialogTitle>
+                </DialogHeader>
+
+                <ScrollArea className="max-h-[500px] pr-4">
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                                <span className="text-gray-400">File:</span>
+                                <p className="text-gray-200 break-all">{fn.file}</p>
+                            </div>
+                            <div>
+                                <span className="text-gray-400">Line:</span>
+                                <p className="text-gray-200">{fn.line}</p>
+                            </div>
+                            <div>
+                                <span className="text-gray-400">Return:</span>
+                                <p className="text-gray-200">{fn.returnType || (fn.returnsValue ? 'value' : 'void')}</p>
+                            </div>
+                            <div>
+                                <span className="text-gray-400">Total Calls:</span>
+                                <p className="text-gray-200">{fn.totalCalls || 0}</p>
+                            </div>
+                        </div>
+
+                        {callers.length > 0 && (
+                            <div>
+                                <h3 className="text-sm font-semibold mb-2 text-cyan-400">Used By</h3>
+                                <div className="flex flex-wrap gap-2">
+                                    {callers.map((caller, idx) => (
+                                        <Badge key={idx} variant="outline" className="text-[10px]">
+                                            {caller}
+                                        </Badge>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {fn.callSites && fn.callSites.length > 0 && (
+                            <div>
+                                <h3 className="text-sm font-semibold mb-2 text-cyan-400">Call Sites</h3>
+                                <div className="space-y-2">
+                                    {fn.callSites.map((cs, idx) => (
+                                        <div key={idx} className="bg-slate-800 rounded p-3 border border-slate-700">
+                                            <p className="text-xs text-gray-300">
+                                                {cs.file || fn.file} · Line {cs.line}
+                                            </p>
+                                            {cs.caller && (
+                                                <p className="text-[11px] text-gray-400 mt-1">Caller: {cs.caller}</p>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {fn.code && (
+                            <div>
+                                <h3 className="text-sm font-semibold mb-2 text-cyan-400">Snippet</h3>
+                                <pre className="bg-slate-900/70 border border-slate-800 rounded p-3 text-xs text-gray-200 overflow-x-auto">
+                                    {fn.code}
+                                </pre>
+                            </div>
+                        )}
+                    </div>
+                </ScrollArea>
+            </DialogContent>
+        </Dialog>
+    );
+}

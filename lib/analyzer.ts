@@ -1,17 +1,18 @@
 import { github } from './github';
 import { Parser } from './parser';
 import { AnalysisData, FileNode, Connection, Pattern, SecurityIssue, FunctionDef } from '@/types';
-import { calcBlast, calcHealth } from '@/utils/calculations';
 
-async function asyncPool(poolLimit: number, array: any[], iteratorFn: (item: any) => Promise<any>) {
-    const ret = [];
-    const executing: any[] = [];
+async function asyncPool<T, R>(poolLimit: number, array: T[], iteratorFn: (item: T) => Promise<R>): Promise<R[]> {
+    const ret: Array<Promise<R>> = [];
+    const executing: Array<Promise<void>> = [];
     for (const item of array) {
-        const p: any = Promise.resolve().then(() => iteratorFn(item));
+        const p = Promise.resolve().then(() => iteratorFn(item));
         ret.push(p);
 
         if (poolLimit <= array.length) {
-            const e: any = p.then(() => executing.splice(executing.indexOf(e), 1));
+            const e = p.then(() => {
+                executing.splice(executing.indexOf(e), 1);
+            });
             executing.push(e);
             if (executing.length >= poolLimit) {
                 await Promise.race(executing);
@@ -47,7 +48,7 @@ export async function analyzeRepository(
     // Analyze all code files for complete results
     const filesToAnalyze = codeFiles;
 
-    const parsedFiles = await asyncPool(10, filesToAnalyze, async (file) => {
+    const parsedFiles = await asyncPool<FileNode, FileNode>(10, filesToAnalyze, async (file) => {
         try {
             onProgress?.('parsing', file.path);
             const content = await github.getFile(owner, repo, file.path);
@@ -68,8 +69,8 @@ export async function analyzeRepository(
 
             onProgress?.('security', file.path);
             // Store temporary data for aggregation
-            (file as any).securityIssues = Parser.detectSecurity(content, file.path);
-            (file as any).rawImports = Parser.detectImports(content, file.path);
+            file.securityIssues = Parser.detectSecurity(content, file.path);
+            file.rawImports = Parser.detectImports(content, file.path);
 
             return file;
         } catch (e) {
@@ -128,8 +129,8 @@ export async function analyzeRepository(
         if (!file.content) return;
 
         // Security
-        if ((file as any).securityIssues) {
-            securityIssues.push(...(file as any).securityIssues);
+        if (file.securityIssues) {
+            securityIssues.push(...file.securityIssues);
         }
 
         onProgress?.('patterns', file.path);
@@ -145,7 +146,7 @@ export async function analyzeRepository(
         }
 
         // Connections based on imports
-        const rawImports = (file as any).rawImports || [];
+        const rawImports = file.rawImports || [];
         rawImports.forEach((imp: string) => {
             const target = files.find(f => {
                 const pathWithoutExt = f.path.replace(/\.[^/.]+$/, "");
@@ -210,7 +211,7 @@ export async function analyzeRepository(
     allFunctions.forEach(fn => {
         if (fn.isTopLevel && (fn.totalCalls || 0) === 0) {
             deadFunctions++;
-            (fn as any).isDead = true;
+            fn.isDead = true;
         }
     });
 

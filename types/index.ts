@@ -10,6 +10,8 @@ export interface FileNode {
     lines?: number;
     layer?: string;
     complexity?: ComplexityScore;
+    securityIssues?: SecurityIssue[];
+    rawImports?: string[];
 }
 
 export interface FunctionCallSite {
@@ -34,6 +36,7 @@ export interface FunctionDef {
     calledBy?: string[];
     callSites?: FunctionCallSite[]; // All places where this function is called
     totalCalls?: number; // Total number of calls to this function
+    isDead?: boolean;
 }
 
 export interface VariableDef {

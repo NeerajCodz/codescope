@@ -7,16 +7,52 @@ interface RateLimit {
     reset: number;
 }
 
+interface GitHubCommit {
+    commit: {
+        author: {
+            name: string;
+        };
+    };
+}
+
+interface GitHubTreeItem {
+    type: string;
+    path: string;
+    size?: number;
+}
+
+interface GitHubTreeResponse {
+    tree?: GitHubTreeItem[];
+}
+
+interface GitHubRepoResponse {
+    default_branch?: string;
+}
+
+interface GitHubContentsResponse {
+    content?: string;
+}
+
+interface GitHubRateLimitResponse {
+    resources?: {
+        core?: {
+            remaining: number;
+            limit: number;
+            reset: number;
+        };
+    };
+}
+
 class GitHubClient {
     private token: string | null = null;
     private rateLimit: RateLimit = { remaining: 60, limit: 60, reset: 0 };
-    private cache: Map<string, { data: any; timestamp: number }> = new Map();
+    private cache: Map<string, { data: unknown; timestamp: number }> = new Map();
 
     setToken(token: string | null) {
         this.token = token;
     }
 
-    private async fetch(url: string): Promise<any> {
+    private async fetch(url: string): Promise<unknown> {
         // Check cache first (5 minute TTL)
         const cached = this.cache.get(url);
         if (cached && Date.now() - cached.timestamp < 300000) {
@@ -57,7 +93,7 @@ class GitHubClient {
 
     async getRateLimit(): Promise<RateLimit> {
         try {
-            const data = await this.fetch('https://api.github.com/rate_limit');
+            const data = await this.fetch('https://api.github.com/rate_limit') as GitHubRateLimitResponse;
             if (data.resources?.core) {
                 this.rateLimit = {
                     remaining: data.resources.core.remaining,
@@ -75,7 +111,7 @@ class GitHubClient {
         try {
             const data = await this.fetch(
                 `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
-            );
+            ) as GitHubContentsResponse;
             return data.content ? atob(data.content) : null;
         } catch {
             return null;
@@ -87,23 +123,23 @@ class GitHubClient {
         repo: string,
         path?: string,
         limit: number = 30
-    ): Promise<any[]> {
+    ): Promise<GitHubCommit[]> {
         if (this.rateLimit.remaining < 20 && !this.token) return [];
         try {
             const url = `https://api.github.com/repos/${owner}/${repo}/commits?per_page=${limit}${path ? `&path=${path}` : ''
                 }`;
-            return await this.fetch(url);
+            return await this.fetch(url) as GitHubCommit[];
         } catch {
             return [];
         }
     }
 
-    async getBlame(owner: string, repo: string, path: string): Promise<any[]> {
+    async getBlame(owner: string, repo: string, path: string): Promise<Array<{ name: string; commits: number; percent: number }>> {
         try {
             const allCommits = await this.getCommits(owner, repo, path, 50);
             const authors: Record<string, number> = {};
 
-            allCommits.forEach((c: any) => {
+            allCommits.forEach((c) => {
                 const name = c.commit.author.name;
                 authors[name] = (authors[name] || 0) + 1;
             });
@@ -128,7 +164,7 @@ class GitHubClient {
         if (onProgress) onProgress('Fetching repository tree...');
 
         // Get repo info for default branch
-        const repoData = await this.fetch(`https://api.github.com/repos/${owner}/${repo}`);
+        const repoData = await this.fetch(`https://api.github.com/repos/${owner}/${repo}`) as GitHubRepoResponse;
         const branch = repoData.default_branch || 'main';
 
         if (onProgress) onProgress(`Loading file tree (${branch})...`);
@@ -136,13 +172,13 @@ class GitHubClient {
         // Get full tree recursively
         const tree = await this.fetch(
             `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`
-        );
+        ) as GitHubTreeResponse;
 
         if (!tree.tree) throw new Error('Invalid tree response');
 
         const files: FileNode[] = [];
 
-        tree.tree.forEach((item: any) => {
+        tree.tree.forEach((item) => {
             if (item.type !== 'blob') return;
 
             const name = item.path.includes('/')

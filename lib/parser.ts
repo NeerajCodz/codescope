@@ -1,5 +1,23 @@
 import * as acorn from 'acorn';
-import { FunctionDef, Pattern, SecurityIssue, VariableDef } from '@/types';
+import type { Node } from 'acorn';
+import { FunctionDef, SecurityIssue, VariableDef } from '@/types';
+
+type UnknownRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null;
+
+const getNodeType = (value: unknown): string | undefined =>
+    isRecord(value) && typeof value.type === 'string' ? value.type : undefined;
+
+const getNodeName = (value: unknown): string | undefined =>
+    isRecord(value) && typeof value.name === 'string' ? value.name : undefined;
+
+const getNodeLoc = (value: unknown): { start?: { line?: number }; end?: { line?: number } } | undefined =>
+    isRecord(value) && isRecord(value.loc)
+        ? (value.loc as { start?: { line?: number }; end?: { line?: number } })
+        : undefined;
+
+const getArray = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 
 export const Parser = {
     codeExts: [
@@ -43,15 +61,19 @@ export const Parser = {
         const isJS = ext.endsWith('.js') || ext.endsWith('.jsx') || ext.endsWith('.mjs');
         const isTS = ext.endsWith('.ts') || ext.endsWith('.tsx');
 
-        const paramToString = (param: any): string => {
+        const paramToString = (param: unknown): string => {
             if (!param) return 'unknown';
-            switch (param.type) {
+            switch (getNodeType(param)) {
                 case 'Identifier':
-                    return param.name;
-                case 'AssignmentPattern':
-                    return `${paramToString(param.left)}=?`;
-                case 'RestElement':
-                    return `...${paramToString(param.argument)}`;
+                    return getNodeName(param) || 'param';
+                case 'AssignmentPattern': {
+                    const left = isRecord(param) ? param.left : undefined;
+                    return `${paramToString(left)}=?`;
+                }
+                case 'RestElement': {
+                    const argument = isRecord(param) ? param.argument : undefined;
+                    return `...${paramToString(argument)}`;
+                }
                 case 'ObjectPattern':
                     return '{...}';
                 case 'ArrayPattern':
@@ -61,23 +83,29 @@ export const Parser = {
             }
         };
 
-        const functionReturnsValue = (node: any): boolean => {
+        const functionReturnsValue = (node: unknown): boolean => {
             if (!node) return false;
-            if (node.type === 'ArrowFunctionExpression' && node.expression && node.body && node.body.type !== 'BlockStatement') {
-                return true;
+            if (getNodeType(node) === 'ArrowFunctionExpression') {
+                const expression = isRecord(node) ? node.expression : undefined;
+                const body = isRecord(node) ? node.body : undefined;
+                if (expression && body && getNodeType(body) !== 'BlockStatement') {
+                    return true;
+                }
             }
             let returnsValue = false;
-            const walkReturn = (n: any) => {
-                if (!n || typeof n !== 'object') return;
-                if (n.type === 'ReturnStatement') {
-                    if (n.argument) returnsValue = true;
+            const walkReturn = (n: unknown) => {
+                if (!isRecord(n)) return;
+                if (getNodeType(n) === 'ReturnStatement') {
+                    const argument = (n as { argument?: unknown }).argument;
+                    if (argument) returnsValue = true;
                 }
                 Object.values(n).forEach((child) => {
                     if (Array.isArray(child)) child.forEach(walkReturn);
-                    else if (typeof child === 'object') walkReturn(child);
+                    else if (isRecord(child)) walkReturn(child);
                 });
             };
-            walkReturn(node.body || node);
+            const body = isRecord(node) ? node.body : undefined;
+            walkReturn(body || node);
             return returnsValue;
         };
 
@@ -89,65 +117,86 @@ export const Parser = {
                     sourceType: 'module',
                     locations: true,
                     ranges: true,
-                });
+                }) as Node;
 
-                const walk = (node: any, scope: number) => {
-                    if (!node || typeof node !== 'object') return;
+                const walk = (node: unknown, scope: number) => {
+                    if (!isRecord(node)) return;
+                    const nodeType = getNodeType(node);
 
-                    if (node.type === 'FunctionDeclaration' && node.id) {
+                    if (nodeType === 'FunctionDeclaration') {
+                        const id = (node as { id?: unknown }).id;
+                        const name = getNodeName(id);
+                        const loc = getNodeLoc(node);
+                        if (!name || !loc?.start?.line) {
+                            // skip unnamed/invalid nodes
+                        } else {
                         fns.push({
-                            name: node.id.name,
+                            name,
                             file: filename,
-                            line: node.loc.start.line,
-                            code: extractCode(node.loc.start.line, node.loc.end.line),
+                            line: loc.start.line,
+                            code: extractCode(loc.start.line, loc.end?.line || loc.start.line),
                             type: 'function',
                             isTopLevel: scope === 0,
-                            params: (node.params || []).map(paramToString),
+                            params: getArray((node as { params?: unknown }).params).map(paramToString),
                             returnsValue: functionReturnsValue(node),
                             returnType: functionReturnsValue(node) ? 'value' : 'void',
                         });
+                        }
                     }
 
-                    if (node.type === 'VariableDeclaration') {
-                        node.declarations.forEach((decl: any) => {
-                            if (decl.init && (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')) {
-                                if (decl.id && decl.id.name) {
+                    if (nodeType === 'VariableDeclaration') {
+                        const declarations = getArray((node as { declarations?: unknown }).declarations);
+                        declarations.forEach((decl) => {
+                            if (!isRecord(decl)) return;
+                            const init = (decl as { init?: unknown }).init;
+                            const initType = getNodeType(init);
+                            if (init && (initType === 'ArrowFunctionExpression' || initType === 'FunctionExpression')) {
+                                const id = (decl as { id?: unknown }).id;
+                                const name = getNodeName(id);
+                                const loc = getNodeLoc(decl);
+                                if (name && loc?.start?.line) {
                                     fns.push({
-                                        name: decl.id.name,
+                                        name,
                                         file: filename,
-                                        line: decl.loc.start.line,
-                                        code: extractCode(decl.loc.start.line, decl.loc.end.line),
-                                        type: decl.init.type === 'ArrowFunctionExpression' ? 'arrow' : 'function',
+                                        line: loc.start.line,
+                                        code: extractCode(loc.start.line, loc.end?.line || loc.start.line),
+                                        type: initType === 'ArrowFunctionExpression' ? 'arrow' : 'function',
                                         isTopLevel: scope === 0,
-                                        params: (decl.init.params || []).map(paramToString),
-                                        returnsValue: functionReturnsValue(decl.init),
-                                        returnType: functionReturnsValue(decl.init) ? 'value' : 'void',
+                                        params: getArray((init as { params?: unknown }).params).map(paramToString),
+                                        returnsValue: functionReturnsValue(init),
+                                        returnType: functionReturnsValue(init) ? 'value' : 'void',
                                     });
                                 }
                             }
                         });
                     }
 
-                    if (node.type === 'MethodDefinition' && node.key && node.key.name) {
+                    if (nodeType === 'MethodDefinition') {
+                        const key = (node as { key?: unknown }).key;
+                        const name = getNodeName(key);
+                        const value = (node as { value?: unknown }).value;
+                        const loc = getNodeLoc(node);
+                        if (name && loc?.start?.line) {
                         fns.push({
-                            name: node.key.name,
+                            name,
                             file: filename,
-                            line: node.loc.start.line,
-                            code: extractCode(node.loc.start.line, node.loc.end.line),
+                            line: loc.start.line,
+                            code: extractCode(loc.start.line, loc.end?.line || loc.start.line),
                             type: 'method',
                             isClassMethod: true,
                             isTopLevel: false,
-                            params: (node.value?.params || []).map(paramToString),
-                            returnsValue: functionReturnsValue(node.value),
-                            returnType: functionReturnsValue(node.value) ? 'value' : 'void',
+                            params: getArray((value as { params?: unknown }).params).map(paramToString),
+                            returnsValue: functionReturnsValue(value),
+                            returnType: functionReturnsValue(value) ? 'value' : 'void',
                         });
+                        }
                     }
 
-                    const newScope = (node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') ? scope + 1 : scope;
+                    const newScope = (nodeType === 'FunctionDeclaration' || nodeType === 'ArrowFunctionExpression' || nodeType === 'FunctionExpression') ? scope + 1 : scope;
                     Object.values(node).forEach((child) => {
                         if (Array.isArray(child)) {
                             child.forEach((c) => walk(c, newScope));
-                        } else if (typeof child === 'object') {
+                        } else if (isRecord(child)) {
                             walk(child, newScope);
                         }
                     });
@@ -156,8 +205,8 @@ export const Parser = {
                 walk(ast, 0);
                 return fns;
 
-            } catch (e) {
-                console.warn(`AST parsing failed for ${filename}, falling back to regex`);
+            } catch (err) {
+                console.warn(`AST parsing failed for ${filename}, falling back to regex`, err);
             }
         }
 
@@ -241,11 +290,11 @@ export const Parser = {
         const isJS = ext.endsWith('.js') || ext.endsWith('.jsx') || ext.endsWith('.mjs');
         const isTS = ext.endsWith('.ts') || ext.endsWith('.tsx');
 
-        const inferValueType = (node: any): string | undefined => {
+        const inferValueType = (node: unknown): string | undefined => {
             if (!node) return undefined;
-            switch (node.type) {
+            switch (getNodeType(node)) {
                 case 'Literal':
-                    return typeof node.value;
+                    return typeof (node as { value?: unknown }).value;
                 case 'ArrayExpression':
                     return 'array';
                 case 'ObjectExpression':
@@ -269,37 +318,42 @@ export const Parser = {
                     ecmaVersion: 2022,
                     sourceType: 'module',
                     locations: true,
-                });
+                }) as Node;
 
-                const walk = (node: any, scope: number) => {
-                    if (!node || typeof node !== 'object') return;
+                const walk = (node: unknown, scope: number) => {
+                    if (!isRecord(node)) return;
+                    const nodeType = getNodeType(node);
 
-                    if (node.type === 'VariableDeclaration') {
-                        node.declarations.forEach((decl: any) => {
-                            if (decl.id && decl.id.name) {
+                    if (nodeType === 'VariableDeclaration') {
+                        const declarations = getArray((node as { declarations?: unknown }).declarations);
+                        declarations.forEach((decl) => {
+                            if (!isRecord(decl)) return;
+                            const id = (decl as { id?: unknown }).id;
+                            const name = getNodeName(id);
+                            if (name) {
                                 vars.push({
-                                    name: decl.id.name,
+                                    name,
                                     file: filename,
-                                    line: decl.loc?.start?.line || 0,
-                                    kind: node.kind || 'unknown',
-                                    valueType: inferValueType(decl.init),
+                                    line: getNodeLoc(decl)?.start?.line || 0,
+                                    kind: (node as { kind?: VariableDef['kind'] }).kind || 'unknown',
+                                    valueType: inferValueType((decl as { init?: unknown }).init),
                                     isTopLevel: scope === 0,
                                 });
                             }
                         });
                     }
 
-                    const newScope = (node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') ? scope + 1 : scope;
+                    const newScope = (nodeType === 'FunctionDeclaration' || nodeType === 'ArrowFunctionExpression' || nodeType === 'FunctionExpression') ? scope + 1 : scope;
                     Object.values(node).forEach((child) => {
                         if (Array.isArray(child)) child.forEach((c) => walk(c, newScope));
-                        else if (typeof child === 'object') walk(child, newScope);
+                        else if (isRecord(child)) walk(child, newScope);
                     });
                 };
 
                 walk(ast, 0);
                 return vars;
-            } catch (e) {
-                console.warn(`Variable parsing failed for ${filename}, using regex fallback`);
+            } catch (err) {
+                console.warn(`Variable parsing failed for ${filename}, using regex fallback`, err);
             }
         }
 
@@ -307,11 +361,12 @@ export const Parser = {
         let match;
         while ((match = regex.exec(content)) !== null) {
             const line = content.substring(0, match.index).split('\n').length;
+            const kind = match[1] === 'const' || match[1] === 'let' || match[1] === 'var' ? match[1] : 'unknown';
             vars.push({
                 name: match[2],
                 file: filename,
                 line,
-                kind: (match[1] as any) || 'unknown',
+                kind,
                 isTopLevel: true,
             });
         }
@@ -435,37 +490,58 @@ export const Parser = {
                     ecmaVersion: 2022,
                     sourceType: 'module',
                     locations: true,
-                });
+                }) as Node;
+
+                const getPropertyName = (property: unknown): string | null => {
+                    const type = getNodeType(property);
+                    if (type === 'Identifier') return getNodeName(property) || null;
+                    if (type === 'Literal') {
+                        const value = (property as { value?: unknown }).value;
+                        if (typeof value === 'string') return value;
+                        if (typeof value === 'number') return String(value);
+                    }
+                    return null;
+                };
 
                 // Walk AST to find ALL call expressions
-                const walk = (node: any, currentFn?: string) => {
-                    if (!node || typeof node !== 'object') return;
+                const walk = (node: unknown, currentFn?: string) => {
+                    if (!isRecord(node)) return;
+                    const nodeType = getNodeType(node);
 
                     // Track current function scope
                     let fnContext = currentFn;
-                    if (node.type === 'FunctionDeclaration' && node.id) {
-                        fnContext = node.id.name;
-                    } else if (node.type === 'VariableDeclaration') {
-                        node.declarations.forEach((decl: any) => {
-                            if (decl.id && decl.init && (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')) {
-                                fnContext = decl.id.name;
+                    if (nodeType === 'FunctionDeclaration') {
+                        const name = getNodeName((node as { id?: unknown }).id);
+                        if (name) fnContext = name;
+                    } else if (nodeType === 'VariableDeclaration') {
+                        const declarations = getArray((node as { declarations?: unknown }).declarations);
+                        declarations.forEach((decl) => {
+                            if (!isRecord(decl)) return;
+                            const id = (decl as { id?: unknown }).id;
+                            const init = (decl as { init?: unknown }).init;
+                            const initType = getNodeType(init);
+                            if (id && init && (initType === 'ArrowFunctionExpression' || initType === 'FunctionExpression')) {
+                                const name = getNodeName(id);
+                                if (name) fnContext = name;
                             }
                         });
                     }
 
                     // CallExpression - tracks direct function calls foo()
-                    if (node.type === 'CallExpression' && node.callee) {
+                    if (nodeType === 'CallExpression' && (node as { callee?: unknown }).callee) {
+                        const callee = (node as { callee?: unknown }).callee;
                         let calleeName: string | null = null;
 
-                        if (node.callee.type === 'Identifier') {
-                            calleeName = node.callee.name;
-                        } else if (node.callee.type === 'MemberExpression' && node.callee.property) {
+                        if (getNodeType(callee) === 'Identifier') {
+                            calleeName = getNodeName(callee) || null;
+                        } else if (getNodeType(callee) === 'MemberExpression') {
                             // Handle obj.method() - extract method name
-                            calleeName = node.callee.property.name || node.callee.property.value;
+                            const property = (callee as { property?: unknown }).property;
+                            calleeName = getPropertyName(property);
                         }
 
                         if (calleeName && fnNames.has(calleeName)) {
-                            const line = node.loc ? node.loc.start.line : 0;
+                            const line = getNodeLoc(node)?.start?.line || 0;
                             if (!callMap[calleeName]) {
                                 callMap[calleeName] = { totalCalls: 0, callSites: [] };
                             }
@@ -478,7 +554,7 @@ export const Parser = {
                     Object.values(node).forEach((child) => {
                         if (Array.isArray(child)) {
                             child.forEach((c) => walk(c, fnContext));
-                        } else if (typeof child === 'object') {
+                        } else if (isRecord(child)) {
                             walk(child, fnContext);
                         }
                     });
@@ -487,8 +563,8 @@ export const Parser = {
                 walk(ast);
                 return callMap;
 
-            } catch (e) {
-                console.warn(`AST parsing failed for ${filename}, using regex fallback`);
+            } catch (err) {
+                console.warn(`AST parsing failed for ${filename}, using regex fallback`, err);
             }
         }
 
@@ -497,8 +573,7 @@ export const Parser = {
             // Match function calls: fnName(
             const callRegex = new RegExp(`\\b${fnName}\\s*\\(`, 'g');
             lines.forEach((line, idx) => {
-                let match;
-                while ((match = callRegex.exec(line)) !== null) {
+                while (callRegex.exec(line) !== null) {
                     // Skip if this is a function definition
                     if (line.match(new RegExp(`(?:function|def|fn|func)\\s+${fnName}\\s*\\(`)) ||
                         line.match(new RegExp(`(?:const|let|var)\\s+${fnName}\\s*=`))) {
