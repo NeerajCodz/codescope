@@ -15,7 +15,7 @@ function HeroWrapper() {
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1a2c4e] via-[#020617] to-black">
+    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#2563eb] via-[#020617] to-black">
       <Header />
       <HeroWrapper />
       <div className="container mx-auto px-4 pb-20">
