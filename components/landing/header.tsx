@@ -31,7 +31,7 @@ export function Header() {
                 variant="outline"
                 size="sm"
                 onClick={handleGitHubLogin}
-                className="gap-2 border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300"
+                className="gap-2 rounded-full border-primary/20 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300"
             >
                 <Github className="w-4 h-4" />
                 Login with GitHub
