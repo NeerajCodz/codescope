@@ -8,6 +8,7 @@ async function asyncPool(poolLimit: number, array: any[], iteratorFn: (item: any
     const executing: any[] = [];
     for (const item of array) {
         const p: any = Promise.resolve().then(() => iteratorFn(item));
+        ret.push(p);
 
         if (poolLimit <= array.length) {
             const e: any = p.then(() => executing.splice(executing.indexOf(e), 1));
