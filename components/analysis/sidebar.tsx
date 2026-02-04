@@ -23,8 +23,6 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { TreeView } from './tree-view';
 import { StructureOutline } from './structure-outline';
-import { HealthRing } from './health-ring';
-import { StatsGrid } from './stats-grid';
 import { DrillDownModal } from '@/components/modals/drill-down-modal';
 import { FileNode } from '@/types';
 import { cn } from '@/lib/utils';
@@ -46,12 +44,6 @@ export function Sidebar() {
         { id: 'arc', label: 'Arc Diagram', icon: GitBranch }
     ] as const;
 
-    const health = useMemo(() => {
-        if (!data) return 0;
-        const base = 100 - (data.stats.avgComplexity * 2);
-        const securityPenalty = data.securityIssues.length * 5;
-        return Math.max(5, Math.min(100, base - securityPenalty));
-    }, [data]);
 
     const handleFileSelect = (file: FileNode) => {
         setSelectedFile(file.path);
@@ -139,25 +131,6 @@ export function Sidebar() {
                 <ScrollArea className="flex-1 px-2">
                     <TreeView onSelect={handleFileSelect} searchQuery={search} data={data?.files || []} />
                 </ScrollArea>
-            </div>
-
-            <Separator className="opacity-50" />
-
-            <div className="p-4 bg-slate-900/30">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                        System Health
-                    </h3>
-                    <Badge variant="outline" className="text-[9px] h-4 px-1 uppercase text-blue-400 border-blue-400/20">
-                        {health > 80 ? "Robust" : health > 50 ? "Stable" : "Risk"}
-                    </Badge>
-                </div>
-
-                <div className="flex justify-center mb-4">
-                    <HealthRing score={health} size={80} strokeWidth={6} />
-                </div>
-
-                <StatsGrid stats={data?.stats} />
             </div>
 
             <DrillDownModal

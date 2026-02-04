@@ -12,6 +12,8 @@ export function Arc() {
     const svgRef = useRef<SVGSVGElement>(null);
     const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
     const [modalOpen, setModalOpen] = useState(false);
+    const svgSelectionRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
+    const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
 
     useEffect(() => {
         if (!data || !svgRef.current) return;
@@ -24,13 +26,15 @@ export function Arc() {
         svg.selectAll('*').remove();
 
         // Zoom
-        const zoom = d3.zoom()
+        const zoom = d3.zoom<SVGSVGElement, unknown>()
             .scaleExtent([0.5, 5])
             .on('zoom', (event) => {
                 g.attr('transform', event.transform);
             });
 
-        svg.call(zoom as any);
+        svg.call(zoom);
+        svgSelectionRef.current = svg;
+        zoomRef.current = zoom;
 
         const g = svg.append('g');
 
@@ -137,6 +141,27 @@ export function Arc() {
             .text((d: any) => d.name.length > 15 ? d.name.substring(0, 12) + '...' : d.name);
 
     }, [data]);
+
+    useEffect(() => {
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<{ action: string }>).detail;
+            if (!detail?.action || !zoomRef.current || !svgSelectionRef.current) return;
+            const svg = svgSelectionRef.current;
+            const zoom = zoomRef.current;
+            if (detail.action === 'reset') {
+                svg.transition().duration(250).call(zoom.transform as any, d3.zoomIdentity);
+                return;
+            }
+            if (detail.action === 'zoom-in') {
+                svg.transition().duration(200).call(zoom.scaleBy as any, 1.2);
+            }
+            if (detail.action === 'zoom-out') {
+                svg.transition().duration(200).call(zoom.scaleBy as any, 0.8);
+            }
+        };
+        window.addEventListener('viz-control', handler as EventListener);
+        return () => window.removeEventListener('viz-control', handler as EventListener);
+    }, []);
 
     return (
         <>

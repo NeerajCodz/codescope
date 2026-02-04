@@ -15,36 +15,36 @@ interface PrivacyModalProps {
 export function PrivacyModal({ open, onOpenChange }: PrivacyModalProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md bg-slate-900 border-slate-800 text-white">
+            <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <div className="flex items-center gap-2 mb-2">
                         <ShieldCheck className="w-5 h-5 text-green-400" />
                         <DialogTitle>Privacy Settings</DialogTitle>
                     </div>
-                    <DialogDescription className="text-slate-400">
+                    <DialogDescription className="text-muted-foreground">
                         Control how your analysis data is handled.
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4 py-4">
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-card/60 border border-border/50">
                         <div className="space-y-0.5">
                             <Label className="text-sm font-medium">Local-Only Mode</Label>
-                            <p className="text-xs text-slate-400">Analysis stays in your browser</p>
+                            <p className="text-xs text-muted-foreground">Analysis stays in your browser</p>
                         </div>
                         <Switch checked />
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-card/60 border border-border/50">
                         <div className="space-y-0.5">
                             <Label className="text-sm font-medium">Anonymize Data</Label>
-                            <p className="text-xs text-slate-400">Strip filenames and comments</p>
+                            <p className="text-xs text-muted-foreground">Strip filenames and comments</p>
                         </div>
                         <Switch />
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-card/60 border border-border/50">
                         <div className="space-y-0.5">
                             <Label className="text-sm font-medium">Auto-Delete</Label>
-                            <p className="text-xs text-slate-400">Clear cache after session ends</p>
+                            <p className="text-xs text-muted-foreground">Clear cache after session ends</p>
                         </div>
                         <Switch checked />
                     </div>

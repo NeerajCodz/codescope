@@ -70,7 +70,7 @@ export function Header() {
                     <div className="p-1 rounded-md bg-primary/10 group-hover:bg-primary/20 transition-colors">
                         <Sparkles className="w-5 h-5 text-primary" />
                     </div>
-                    <span className="text-xl font-bold bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
+                    <span className="text-xl font-bold bg-linear-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
                         CodeScope
                     </span>
                 </Link>

@@ -7,6 +7,7 @@ import { FileNode } from '@/types';
 import ignoreSizeFormats from '@/utils/formats/ignore-size.json';
 import theme from '@/utils/themes';
 import { NodeDetailsModal } from '@/components/modals/node-details-modal';
+import { ConnectionDetailsModal } from '@/components/modals/connection-details-modal';
 
 interface GraphNode extends d3.SimulationNodeDatum {
     id: string;
@@ -25,6 +26,10 @@ export function ClusterGraph() {
     const svgRef = useRef<SVGSVGElement>(null);
     const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
     const [modalOpen, setModalOpen] = useState(false);
+    const [selectedConnection, setSelectedConnection] = useState<{ source: string; target: string } | null>(null);
+    const [connectionModalOpen, setConnectionModalOpen] = useState(false);
+    const svgSelectionRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
+    const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
 
     useEffect(() => {
         if (!data || !svgRef.current) return;
@@ -46,6 +51,8 @@ export function ClusterGraph() {
             });
 
         svg.call(zoom as any);
+        svgSelectionRef.current = svg;
+        zoomRef.current = zoom;
 
         const g = svg.append('g');
 
@@ -134,6 +141,9 @@ export function ClusterGraph() {
             .force('categoryY', d3.forceY<GraphNode>((d) => categoryPositions[d.category]?.[1] || height / 2)
                 .strength(0.15));
 
+        const getNodeId = (value: string | GraphNode) => (typeof value === 'string' ? value : value.id);
+        const fileMap = new Map(data.files.map((f) => [f.path, f] as const));
+
         const link = g.append('g')
             .selectAll('line')
             .data(links)
@@ -141,6 +151,29 @@ export function ClusterGraph() {
             .attr('stroke', theme.colors.visualization.edges.default)
             .attr('stroke-opacity', 0.6)
             .attr('stroke-width', 1);
+
+        const highlightConnections = (nodeId: string) => {
+            link
+                .attr('stroke', (l) => (getNodeId(l.source) === nodeId || getNodeId(l.target) === nodeId ? theme.colors.visualization.edges.hover : theme.colors.visualization.edges.default))
+                .attr('stroke-opacity', (l) => (getNodeId(l.source) === nodeId || getNodeId(l.target) === nodeId ? 0.9 : 0.15))
+                .attr('stroke-width', (l) => (getNodeId(l.source) === nodeId || getNodeId(l.target) === nodeId ? 2.2 : 1));
+
+            node
+                .attr('stroke', (n) => (n.id === nodeId ? theme.colors.text.accent : theme.colors.border.accent))
+                .attr('stroke-width', (n) => (n.id === nodeId ? 3 : 2))
+                .style('filter', (n) => (n.id === nodeId ? 'drop-shadow(0 0 8px rgba(6, 182, 212, 0.55))' : 'none'));
+        };
+
+        const clearHighlights = () => {
+            link
+                .attr('stroke', theme.colors.visualization.edges.default)
+                .attr('stroke-opacity', 0.6)
+                .attr('stroke-width', 1);
+            node
+                .attr('stroke', theme.colors.border.accent)
+                .attr('stroke-width', 2)
+                .style('filter', 'none');
+        };
 
         const node = g.append('g')
             .selectAll('circle')
@@ -161,6 +194,8 @@ export function ClusterGraph() {
                 d3.select(this)
                     .attr('stroke', theme.colors.text.accent)
                     .attr('stroke-width', 3);
+
+                highlightConnections(d.id);
 
                 const complexityColor = d.file.complexity?.level === 'critical' ? '#ef4444' :
                     d.file.complexity?.level === 'high' ? '#f59e0b' :
@@ -207,6 +242,7 @@ export function ClusterGraph() {
                     .attr('stroke', theme.colors.border.accent)
                     .attr('stroke-width', 2);
                 tooltip.style('visibility', 'hidden');
+                clearHighlights();
             })
             .on('click', function(event, d) {
                 event.stopPropagation();
@@ -228,6 +264,43 @@ export function ClusterGraph() {
                     d.fx = null;
                     d.fy = null;
                 }) as any);
+
+            link.on('mouseover', (event, d) => {
+                const sourceId = getNodeId(d.source);
+                const targetId = getNodeId(d.target);
+                const sourceFile = fileMap.get(sourceId);
+                const targetFile = fileMap.get(targetId);
+
+                link
+                    .attr('stroke', (l) => (l === d ? theme.colors.visualization.edges.hover : theme.colors.visualization.edges.default))
+                    .attr('stroke-opacity', (l) => (l === d ? 0.9 : 0.15))
+                    .attr('stroke-width', (l) => (l === d ? 2.6 : 1));
+
+                node
+                    .attr('stroke', (n) => (n.id === sourceId || n.id === targetId ? theme.colors.text.accent : theme.colors.border.accent))
+                    .attr('stroke-width', (n) => (n.id === sourceId || n.id === targetId ? 3 : 2))
+                    .style('filter', (n) => (n.id === sourceId || n.id === targetId ? 'drop-shadow(0 0 8px rgba(6, 182, 212, 0.55))' : 'none'));
+
+                tooltip
+                    .style('visibility', 'visible')
+                    .html(`
+                        <div style="font-weight: 600; color: ${theme.colors.text.accent}; margin-bottom: 6px; font-size: 12px;">
+                            ${sourceFile?.name || sourceId} → ${targetFile?.name || targetId}
+                        </div>
+                        <div style="color: ${theme.colors.text.secondary}; font-size: 10px;">Hover line for details. Click for connection.</div>
+                    `);
+            }).on('mousemove', (event) => {
+                tooltip
+                    .style('top', (event.pageY + 10) + 'px')
+                    .style('left', (event.pageX + 10) + 'px');
+            }).on('mouseout', () => {
+                tooltip.style('visibility', 'hidden');
+                clearHighlights();
+            }).on('click', (event, d) => {
+                event.stopPropagation();
+                setSelectedConnection({ source: getNodeId(d.source), target: getNodeId(d.target) });
+                setConnectionModalOpen(true);
+            });
 
         const label = g.append('g')
             .selectAll('text')
@@ -262,14 +335,35 @@ export function ClusterGraph() {
         };
     }, [data]);
 
-    if (!data) return null;
+    useEffect(() => {
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<{ action: string }>).detail;
+            if (!detail?.action || !zoomRef.current || !svgSelectionRef.current) return;
+            const svg = svgSelectionRef.current;
+            const zoom = zoomRef.current;
+            if (detail.action === 'reset') {
+                svg.transition().duration(250).call(zoom.transform as any, d3.zoomIdentity);
+                return;
+            }
+            if (detail.action === 'zoom-in') {
+                svg.transition().duration(200).call(zoom.scaleBy as any, 1.2);
+            }
+            if (detail.action === 'zoom-out') {
+                svg.transition().duration(200).call(zoom.scaleBy as any, 0.8);
+            }
+        };
+        window.addEventListener('viz-control', handler as EventListener);
+        return () => window.removeEventListener('viz-control', handler as EventListener);
+    }, []);
 
     const connections = useMemo(() => {
-        if (!selectedFile) return { imports: 0, exports: 0 };
+        if (!data || !selectedFile) return { imports: 0, exports: 0 };
         const imports = data.connections.filter(c => c.target === selectedFile.path).length;
         const exports = data.connections.filter(c => c.source === selectedFile.path).length;
         return { imports, exports };
     }, [selectedFile, data]);
+
+    if (!data) return null;
 
     return (
         <>
@@ -282,6 +376,13 @@ export function ClusterGraph() {
                 onOpenChange={setModalOpen}
                 file={selectedFile}
                 connections={connections}
+            />
+
+            <ConnectionDetailsModal
+                open={connectionModalOpen}
+                onOpenChange={setConnectionModalOpen}
+                sourcePath={selectedConnection?.source}
+                targetPath={selectedConnection?.target}
             />
         </>
     );

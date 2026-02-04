@@ -22,13 +22,13 @@ export function UnusedFunctionsModal({ open, onOpenChange }: UnusedFunctionsModa
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-xl bg-slate-900 border-slate-800 text-white max-h-[80vh] flex flex-col">
+            <DialogContent className="sm:max-w-xl max-h-[80vh] flex flex-col">
                 <DialogHeader>
                     <div className="flex items-center gap-2 mb-2">
                         <Trash2 className="w-5 h-5 text-orange-400" />
                         <DialogTitle>Potential Dead Code</DialogTitle>
                     </div>
-                    <DialogDescription className="text-slate-400">
+                    <DialogDescription className="text-muted-foreground">
                         Detected {unused.length} functions that appear to be unused in the analyzed files.
                     </DialogDescription>
                 </DialogHeader>
@@ -36,7 +36,7 @@ export function UnusedFunctionsModal({ open, onOpenChange }: UnusedFunctionsModa
                 <ScrollArea className="flex-1 mt-4 pr-4">
                     <div className="space-y-3">
                         {unused.length > 0 ? unused.map((fn, i) => (
-                            <div key={i} className="p-3 rounded-lg border border-slate-800 bg-slate-900/50 hover:bg-slate-800/50 transition-colors">
+                            <div key={i} className="p-3 rounded-lg border border-border/50 bg-card/60 hover:bg-card/80 transition-colors">
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2">
                                         <Code className="w-4 h-4 text-blue-400" />
@@ -46,7 +46,7 @@ export function UnusedFunctionsModal({ open, onOpenChange }: UnusedFunctionsModa
                                         Unused
                                     </Badge>
                                 </div>
-                                <div className="flex items-center gap-2 text-xs text-slate-500">
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <FileCode className="w-3 h-3" />
                                     <span>{fn.path.split('/').pop()}</span>
                                     <span>•</span>
@@ -54,7 +54,7 @@ export function UnusedFunctionsModal({ open, onOpenChange }: UnusedFunctionsModa
                                 </div>
                             </div>
                         )) : (
-                            <div className="text-center py-12 text-slate-500">
+                            <div className="text-center py-12 text-muted-foreground">
                                 <CheckCircle className="w-12 h-12 mx-auto mb-4 opacity-20 text-green-500" />
                                 <p>No dead code detected in the analyzed subset.</p>
                             </div>

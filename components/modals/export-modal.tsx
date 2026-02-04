@@ -13,27 +13,27 @@ interface ExportModalProps {
 export function ExportModal({ open, onOpenChange }: ExportModalProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md bg-slate-900 border-slate-800 text-white">
+            <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Export Analysis</DialogTitle>
-                    <DialogDescription className="text-slate-400">
+                    <DialogDescription className="text-muted-foreground">
                         Choose a format to export your repository analysis data.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid grid-cols-2 gap-4 py-4">
-                    <Button variant="outline" className="flex flex-col items-center gap-2 h-24 border-slate-800 hover:bg-slate-800">
+                    <Button variant="outline" className="flex flex-col items-center gap-2 h-24">
                         <FileJson className="w-8 h-8 text-blue-400" />
                         <span>JSON Data</span>
                     </Button>
-                    <Button variant="outline" className="flex flex-col items-center gap-2 h-24 border-slate-800 hover:bg-slate-800">
+                    <Button variant="outline" className="flex flex-col items-center gap-2 h-24">
                         <FileText className="w-8 h-8 text-green-400" />
                         <span>CSV Report</span>
                     </Button>
-                    <Button variant="outline" className="flex flex-col items-center gap-2 h-24 border-slate-800 hover:bg-slate-800">
+                    <Button variant="outline" className="flex flex-col items-center gap-2 h-24">
                         <ImageIcon className="w-8 h-8 text-purple-400" />
                         <span>PNG Image</span>
                     </Button>
-                    <Button variant="outline" className="flex flex-col items-center gap-2 h-24 border-slate-800 hover:bg-slate-800">
+                    <Button variant="outline" className="flex flex-col items-center gap-2 h-24">
                         <Code className="w-8 h-8 text-orange-400" />
                         <span>SVG Vector</span>
                     </Button>
