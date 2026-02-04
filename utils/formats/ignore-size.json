@@ -1,0 +1,13 @@
+{
+  "staticSizeFormats": [
+    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".bmp", ".svg",
+    ".woff", ".woff2", ".ttf", ".eot", ".otf",
+    ".pdf", ".zip", ".tar", ".gz", ".rar", ".7z",
+    ".exe", ".dll", ".so", ".dylib", ".bin", ".dat",
+    ".db", ".sqlite", ".lock",
+    ".mp3", ".mp4", ".wav", ".avi", ".mov", ".webm", ".flv",
+    ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".env",
+    ".md", ".txt", ".log", ".csv",".avif"
+  ],
+  "staticNodeSize": 20
+}

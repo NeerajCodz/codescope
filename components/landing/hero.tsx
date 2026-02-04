@@ -101,7 +101,7 @@ export function Hero() {
                     {/* Title */}
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tight">
                         <span className="bg-gradient-to-r from-cyan-400 via-blue-500 to-cyan-600 bg-clip-text text-transparent">
-                            CodeMap
+                            CodeScope
                         </span>
                     </h1>
 
