@@ -23,6 +23,26 @@ export default function AnalysisPage() {
     const { toast } = useToast();
 
     const handleAnalysis = async (tokenOverride?: string) => {
+        const importFlag = searchParams.get('import');
+        if (importFlag) {
+            const imported = sessionStorage.getItem('analysis_import');
+            if (imported) {
+                try {
+                    const importedData = JSON.parse(imported);
+                    setData(importedData);
+                    setError(null);
+                    setLoading(false);
+                    toast({
+                        title: 'Imported analysis',
+                        description: 'Loaded from JSON file',
+                    });
+                    return;
+                } catch (e) {
+                    sessionStorage.removeItem('analysis_import');
+                }
+            }
+        }
+
         const repo = searchParams.get('repo');
         const token = tokenOverride || searchParams.get('token');
 

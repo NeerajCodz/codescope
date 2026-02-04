@@ -39,30 +39,30 @@ export function FunctionDetailsModal({ open, onOpenChange, fn }: FunctionDetails
                     </DialogTitle>
                 </DialogHeader>
 
-                <ScrollArea className="max-h-[500px] pr-4">
+                <ScrollArea className="max-h-125 pr-4">
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-3 text-sm">
                             <div>
-                                <span className="text-gray-400">File:</span>
-                                <p className="text-gray-200 break-all">{fn.file}</p>
+                                <span className="text-muted-foreground">File:</span>
+                                <p className="text-foreground break-all">{fn.file}</p>
                             </div>
                             <div>
-                                <span className="text-gray-400">Line:</span>
-                                <p className="text-gray-200">{fn.line}</p>
+                                <span className="text-muted-foreground">Line:</span>
+                                <p className="text-foreground">{fn.line}</p>
                             </div>
                             <div>
-                                <span className="text-gray-400">Return:</span>
-                                <p className="text-gray-200">{fn.returnType || (fn.returnsValue ? 'value' : 'void')}</p>
+                                <span className="text-muted-foreground">Return:</span>
+                                <p className="text-foreground">{fn.returnType || (fn.returnsValue ? 'value' : 'void')}</p>
                             </div>
                             <div>
-                                <span className="text-gray-400">Total Calls:</span>
-                                <p className="text-gray-200">{fn.totalCalls || 0}</p>
+                                <span className="text-muted-foreground">Total Calls:</span>
+                                <p className="text-foreground">{fn.totalCalls || 0}</p>
                             </div>
                         </div>
 
                         {callers.length > 0 && (
                             <div>
-                                <h3 className="text-sm font-semibold mb-2 text-cyan-400">Used By</h3>
+                                <h3 className="text-sm font-semibold mb-2 text-primary">Used By</h3>
                                 <div className="flex flex-wrap gap-2">
                                     {callers.map((caller, idx) => (
                                         <Badge key={idx} variant="outline" className="text-[10px]">
@@ -75,15 +75,15 @@ export function FunctionDetailsModal({ open, onOpenChange, fn }: FunctionDetails
 
                         {fn.callSites && fn.callSites.length > 0 && (
                             <div>
-                                <h3 className="text-sm font-semibold mb-2 text-cyan-400">Call Sites</h3>
+                                <h3 className="text-sm font-semibold mb-2 text-primary">Call Sites</h3>
                                 <div className="space-y-2">
                                     {fn.callSites.map((cs, idx) => (
-                                        <div key={idx} className="bg-slate-800 rounded p-3 border border-slate-700">
-                                            <p className="text-xs text-gray-300">
+                                        <div key={idx} className="bg-card/60 rounded p-3 border border-border/50">
+                                            <p className="text-xs text-foreground">
                                                 {cs.file || fn.file} · Line {cs.line}
                                             </p>
                                             {cs.caller && (
-                                                <p className="text-[11px] text-gray-400 mt-1">Caller: {cs.caller}</p>
+                                                <p className="text-[11px] text-muted-foreground mt-1">Caller: {cs.caller}</p>
                                             )}
                                         </div>
                                     ))}
@@ -93,8 +93,8 @@ export function FunctionDetailsModal({ open, onOpenChange, fn }: FunctionDetails
 
                         {fn.code && (
                             <div>
-                                <h3 className="text-sm font-semibold mb-2 text-cyan-400">Snippet</h3>
-                                <pre className="bg-slate-900/70 border border-slate-800 rounded p-3 text-xs text-gray-200 overflow-x-auto">
+                                <h3 className="text-sm font-semibold mb-2 text-primary">Snippet</h3>
+                                <pre className="bg-card/60 border border-border/50 rounded p-3 text-xs text-foreground overflow-x-auto">
                                     {fn.code}
                                 </pre>
                             </div>

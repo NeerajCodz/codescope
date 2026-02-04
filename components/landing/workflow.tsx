@@ -45,7 +45,7 @@ export function Workflow() {
 
                 <div className="relative grid md:grid-cols-3 gap-12 max-w-6xl mx-auto">
                     {/* Connecting Line (Desktop) */}
-                    <div className="hidden md:block absolute top-16 left-[16%] right-[16%] h-0.5 bg-gradient-to-r from-blue-500/30 via-green-500/30 to-purple-500/30 -z-10" />
+                    <div className="hidden md:block absolute top-16 left-[16%] right-[16%] h-0.5 bg-linear-to-r from-blue-500/30 via-green-500/30 to-purple-500/30 -z-10" />
 
                     {steps.map((step, index) => (
                         <div key={index} className="relative flex flex-col items-center text-center group">

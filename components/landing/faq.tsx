@@ -48,7 +48,7 @@ export function FAQ() {
                     <div className="inline-flex items-center justify-center p-2 rounded-full bg-primary/10 mb-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <HelpCircle className="w-5 h-5 text-primary" />
                     </div>
-                    <h2 className="text-3xl md:text-4xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                    <h2 className="text-3xl md:text-4xl font-bold tracking-tight bg-linear-to-r from-white to-gray-400 bg-clip-text text-transparent">
                         Frequently Asked Questions
                     </h2>
                     <p className="text-muted-foreground max-w-2xl mx-auto">

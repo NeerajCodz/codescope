@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sparkles, Github, Key, Zap, ChevronDown, ChevronUp } from 'lucide-react';
+import { ImportModal } from '@/components/modals/import/import-modal';
 
 export function Hero() {
     const router = useRouter();
@@ -19,6 +20,10 @@ export function Hero() {
     const [reposLoading, setReposLoading] = useState(false);
     const [repoError, setRepoError] = useState<string | null>(null);
     const [selectedRepo, setSelectedRepo] = useState('');
+    const [importError, setImportError] = useState<string | null>(null);
+    const [importLoading, setImportLoading] = useState(false);
+    const [importOpen, setImportOpen] = useState(false);
+    const [importTab, setImportTab] = useState<'github' | 'codespace'>('github');
 
     useEffect(() => {
         // Check if GitHub OAuth token is in URL
@@ -118,7 +123,26 @@ export function Hero() {
         router.push(`/analysis?${params.toString()}`);
     };
 
+    const handleImport = async (file: File) => {
+        setImportError(null);
+        setImportLoading(true);
+        try {
+            const text = await file.text();
+            const parsed = JSON.parse(text);
+            if (!parsed || !parsed.files || !parsed.connections || !parsed.stats) {
+                throw new Error('Invalid analysis JSON');
+            }
+            sessionStorage.setItem('analysis_import', JSON.stringify(parsed));
+            router.push('/analysis?import=1');
+        } catch (err) {
+            setImportError('Failed to import JSON. Please use a valid CodeScope export.');
+        } finally {
+            setImportLoading(false);
+        }
+    };
+
     return (
+        <>
         <div className="relative">
             {/* Background gradient */}
             <div className="absolute inset-0 -z-10 bg-gradient-to-b from-primary/5 via-transparent to-transparent opacity-50" />
@@ -142,7 +166,7 @@ export function Hero() {
 
                     {/* Title */}
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tight animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100">
-                        <span className="bg-gradient-to-r from-cyan-400 via-blue-500 to-cyan-600 bg-clip-text text-transparent pb-2 block">
+                        <span className="bg-linear-to-r from-cyan-400 via-blue-500 to-cyan-600 bg-clip-text text-transparent pb-2 block">
                             CodeScope
                         </span>
                     </h1>
@@ -157,8 +181,34 @@ export function Hero() {
                     <div className="max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-10 duration-700 delay-300">
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="p-8 rounded-2xl bg-card/50 backdrop-blur-sm border border-border/50 shadow-2xl space-y-4 hover:border-primary/20 transition-colors duration-500">
+                                <div className="flex items-center justify-center">
+                                    <div className="inline-flex rounded-full border border-border/60 bg-card/60 p-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setImportTab('github')}
+                                            className={`px-4 py-2 text-xs font-medium rounded-full transition-colors ${
+                                                importTab === 'github'
+                                                    ? 'bg-primary text-primary-foreground'
+                                                    : 'text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            GITHUB
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setImportTab('codespace')}
+                                            className={`px-4 py-2 text-xs font-medium rounded-full transition-colors ${
+                                                importTab === 'codespace'
+                                                    ? 'bg-primary text-primary-foreground'
+                                                    : 'text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            Codespace import
+                                        </button>
+                                    </div>
+                                </div>
                                 {/* Repository Selector (when logged in) */}
-                                {(token || reposLoading || repoError || repos.length > 0) && (
+                                {importTab === 'github' && (token || reposLoading || repoError || repos.length > 0) && (
                                     <div className="space-y-2">
                                         <Label htmlFor="repo-select" className="text-sm font-medium flex items-center gap-2">
                                             <Github className="w-4 h-4 text-primary" />
@@ -193,6 +243,7 @@ export function Hero() {
                                 )}
 
                                 {/* Repository URL Input */}
+                                {importTab === 'github' && (
                                 <div className="space-y-2">
                                     <Label htmlFor="repo" className="text-sm font-medium flex items-center gap-2">
                                         <Github className="w-4 h-4 text-primary" />
@@ -211,8 +262,35 @@ export function Hero() {
                                         Enter any public GitHub repository URL
                                     </p>
                                 </div>
+                                )}
+
+                                {/* Import JSON */}
+                                {importTab === 'codespace' && (
+                                <div className="space-y-2 text-center">
+                                    <Label className="text-sm font-medium flex items-center justify-center gap-2">
+                                        <Zap className="w-4 h-4 text-primary" />
+                                        Import Analysis JSON
+                                    </Label>
+                                    <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="h-12 px-6"
+                                            disabled={importLoading}
+                                            onClick={() => setImportOpen(true)}
+                                        >
+                                            {importLoading ? 'Importing...' : 'Import JSON'}
+                                        </Button>
+                                        <span className="text-xs text-muted-foreground">Use a CodeScope export</span>
+                                    </div>
+                                    {importError && (
+                                        <p className="text-xs text-destructive">{importError}</p>
+                                    )}
+                                </div>
+                                )}
 
                                 {/* Token Section - Collapsible */}
+                                {importTab === 'github' && (
                                 <div className="space-y-2">
                                     <button
                                         type="button"
@@ -263,14 +341,16 @@ export function Hero() {
                                         </div>
                                     )}
                                 </div>
+                                )}
 
 
                                 {/* Submit Button */}
+                                {importTab === 'github' && (
                                 <Button
                                     type="submit"
                                     size="lg"
                                     disabled={loading || !repoUrl}
-                                    className="w-full h-12 text-base font-medium shadow-lg shadow-primary/20 bg-gradient-to-r from-primary to-emerald-600 hover:from-primary/90 hover:to-emerald-600/90 transition-all duration-300 transform hover:scale-[1.02]"
+                                    className="w-full h-12 text-base font-medium shadow-lg shadow-primary/20 bg-linear-to-r from-primary to-emerald-600 hover:from-primary/90 hover:to-emerald-600/90 transition-all duration-300 transform hover:scale-[1.02]"
                                 >
                                     {loading ? (
                                         <>
@@ -282,6 +362,7 @@ export function Hero() {
                                         </>
                                     )}
                                 </Button>
+                                )}
                             </div>
 
                             {/* Privacy Note */}
@@ -309,5 +390,13 @@ export function Hero() {
                 </div>
             </div>
         </div>
+        <ImportModal
+            open={importOpen}
+            onOpenChange={setImportOpen}
+            onImport={handleImport}
+            loading={importLoading}
+            error={importError}
+        />
+        </>
     );
 }

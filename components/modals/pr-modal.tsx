@@ -3,8 +3,7 @@
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { GitPullRequest, AlertTriangle, CheckCircle, ShieldAlert } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { GitPullRequest, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 interface PRModalProps {
     open: boolean;
@@ -14,13 +13,13 @@ interface PRModalProps {
 export function PRModal({ open, onOpenChange }: PRModalProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-2xl bg-slate-900 border-slate-800 text-white">
+            <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
                     <div className="flex items-center gap-2 mb-2">
                         <GitPullRequest className="w-5 h-5 text-blue-400" />
                         <DialogTitle>Pull Request Risk Analysis</DialogTitle>
                     </div>
-                    <DialogDescription className="text-slate-400">
+                    <DialogDescription className="text-muted-foreground">
                         Deep impact analysis for incoming changes.
                     </DialogDescription>
                 </DialogHeader>
@@ -42,20 +41,20 @@ export function PRModal({ open, onOpenChange }: PRModalProps) {
                     </div>
 
                     <div className="space-y-3">
-                        <h4 className="text-sm font-semibold text-slate-300">Risk Factors</h4>
+                        <h4 className="text-sm font-semibold text-foreground/80">Risk Factors</h4>
                         <div className="space-y-2">
-                            <div className="flex items-start gap-3 p-3 rounded bg-slate-800/50 text-sm">
+                            <div className="flex items-start gap-3 p-3 rounded bg-card/60 border border-border/50 text-sm">
                                 <ShieldAlert className="w-4 h-4 text-red-400 mt-0.5" />
                                 <div>
                                     <p className="font-medium">Circular Dependency Introduced</p>
-                                    <p className="text-slate-400 text-xs">`auth-service.ts` now depends on `user-session.ts` transitively.</p>
+                                    <p className="text-muted-foreground text-xs">`auth-service.ts` now depends on `user-session.ts` transitively.</p>
                                 </div>
                             </div>
-                            <div className="flex items-start gap-3 p-3 rounded bg-slate-800/50 text-sm">
+                            <div className="flex items-start gap-3 p-3 rounded bg-card/60 border border-border/50 text-sm">
                                 <AlertTriangle className="w-4 h-4 text-orange-400 mt-0.5" />
                                 <div>
                                     <p className="font-medium">High Complexity Change</p>
-                                    <p className="text-slate-400 text-xs">`processPayment` complexity increased by 14 points.</p>
+                                    <p className="text-muted-foreground text-xs">`processPayment` complexity increased by 14 points.</p>
                                 </div>
                             </div>
                         </div>

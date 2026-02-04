@@ -6,6 +6,7 @@ import { useAnalysisStore } from '@/components/context/analysis-context';
 import { FileNode } from '@/types';
 import theme from '@/utils/themes';
 import { NodeDetailsModal } from '@/components/modals/node-details-modal';
+import { ConnectionDetailsModal } from '@/components/modals/connection-details-modal';
 
 interface GraphNode extends d3.SimulationNodeDatum {
     id: string;
@@ -20,6 +21,8 @@ interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
     source: string | GraphNode;
     target: string | GraphNode;
     count: number;
+    sourceId: string;
+    targetId: string;
 }
 
 export function ForceGraph() {
@@ -27,6 +30,8 @@ export function ForceGraph() {
     const svgRef = useRef<SVGSVGElement>(null);
     const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
     const [modalOpen, setModalOpen] = useState(false);
+    const [selectedConnection, setSelectedConnection] = useState<{ source: string; target: string } | null>(null);
+    const [connectionModalOpen, setConnectionModalOpen] = useState(false);
     const svgSelectionRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
     const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
     const nodesRef = useRef<GraphNode[] | null>(null);
@@ -57,7 +62,7 @@ export function ForceGraph() {
             if (!fileIds.has(c.source) || !fileIds.has(c.target)) return;
             const key = `${c.source}|${c.target}`;
             if (!linkMap.has(key)) {
-                linkMap.set(key, { source: c.source, target: c.target, count: 0 } as GraphLink);
+                linkMap.set(key, { source: c.source, target: c.target, count: 0, sourceId: c.source, targetId: c.target } as GraphLink);
             }
             linkMap.get(key)!.count += c.count || 1;
         });
@@ -135,6 +140,9 @@ export function ForceGraph() {
             .style('pointer-events', 'none')
             .style('z-index', '10000');
 
+        const getNodeId = (value: string | GraphNode) => (typeof value === 'string' ? value : value.id);
+        const fileMap = new Map(files.map((f) => [f.path, f] as const));
+
         const link = linkLayer.selectAll('path')
             .data(links)
             .join('path')
@@ -172,6 +180,40 @@ export function ForceGraph() {
             setSelectedFilePath(d.file.path);
         });
 
+        const highlightConnections = (nodeId: string) => {
+            const connected = new Set<string>([nodeId]);
+            links.forEach((l) => {
+                const sourceId = getNodeId(l.source);
+                const targetId = getNodeId(l.target);
+                if (sourceId === nodeId) connected.add(targetId);
+                if (targetId === nodeId) connected.add(sourceId);
+            });
+
+            link
+                .attr('stroke', (l) => (getNodeId(l.source) === nodeId || getNodeId(l.target) === nodeId ? theme.colors.visualization.edges.hover : '#222'))
+                .attr('stroke-opacity', (l) => (getNodeId(l.source) === nodeId || getNodeId(l.target) === nodeId ? 0.9 : 0.15))
+                .attr('stroke-width', (l) => (getNodeId(l.source) === nodeId || getNodeId(l.target) === nodeId ? 2.2 : Math.max(1, Math.min(2, Math.sqrt(l.count) * 0.3))));
+
+            node.select('circle')
+                .attr('stroke', (n) => (connected.has(n.id) ? theme.colors.text.accent : theme.colors.border.accent))
+                .attr('stroke-width', (n) => (connected.has(n.id) ? 2.2 : 1.2))
+                .style('filter', (n) => (connected.has(n.id) ? 'drop-shadow(0 0 8px rgba(6, 182, 212, 0.55))' : 'none'));
+        };
+
+        const clearHighlights = () => {
+            link
+                .attr('stroke', '#333')
+                .attr('stroke-opacity', 0.4)
+                .attr('stroke-width', (d) => Math.max(1, Math.min(2, Math.sqrt(d.count) * 0.3)));
+            node.select('circle')
+                .attr('stroke', (d) => {
+                    const c = d3.color(theme.getNodeColor(d.id));
+                    return c ? c.brighter(0.3).toString() : '#fff';
+                })
+                .attr('stroke-width', 1.5)
+                .style('filter', 'none');
+        };
+
         node.on('mouseenter', (event, d) => {
             const rect = svgRef.current?.getBoundingClientRect();
             const x = rect ? event.clientX - rect.left + 10 : event.clientX + 10;
@@ -181,8 +223,48 @@ export function ForceGraph() {
                 .style('top', `${y}px`)
                 .style('visibility', 'visible')
                 .html(`${d.name}<br/>${d.fnCount} functions<br/>${d.layer || 'unknown'} layer`);
+            highlightConnections(d.id);
         }).on('mouseleave', () => {
             tooltip.style('visibility', 'hidden');
+            clearHighlights();
+        });
+
+        link.on('mouseenter', (event, d) => {
+            const sourceId = getNodeId(d.source);
+            const targetId = getNodeId(d.target);
+            const sourceFile = fileMap.get(sourceId);
+            const targetFile = fileMap.get(targetId);
+
+            link
+                .attr('stroke', (l) => (l === d ? theme.colors.visualization.edges.hover : '#222'))
+                .attr('stroke-opacity', (l) => (l === d ? 0.9 : 0.1))
+                .attr('stroke-width', (l) => (l === d ? 2.6 : Math.max(1, Math.min(2, Math.sqrt(l.count) * 0.3))));
+
+            node.select('circle')
+                .attr('stroke', (n) => (n.id === sourceId || n.id === targetId ? theme.colors.text.accent : theme.colors.border.accent))
+                .attr('stroke-width', (n) => (n.id === sourceId || n.id === targetId ? 2.4 : 1.2))
+                .style('filter', (n) => (n.id === sourceId || n.id === targetId ? 'drop-shadow(0 0 8px rgba(6, 182, 212, 0.55))' : 'none'));
+
+            const rect = svgRef.current?.getBoundingClientRect();
+            const x = rect ? event.clientX - rect.left + 10 : event.clientX + 10;
+            const y = rect ? event.clientY - rect.top + 10 : event.clientY + 10;
+            tooltip
+                .style('left', `${x}px`)
+                .style('top', `${y}px`)
+                .style('visibility', 'visible')
+                .html(`${sourceFile?.name || sourceId} → ${targetFile?.name || targetId}<br/>Calls: ${d.count}`);
+        }).on('mousemove', (event) => {
+            const rect = svgRef.current?.getBoundingClientRect();
+            const x = rect ? event.clientX - rect.left + 10 : event.clientX + 10;
+            const y = rect ? event.clientY - rect.top + 10 : event.clientY + 10;
+            tooltip.style('left', `${x}px`).style('top', `${y}px`);
+        }).on('mouseleave', () => {
+            tooltip.style('visibility', 'hidden');
+            clearHighlights();
+        }).on('click', (event, d) => {
+            event.stopPropagation();
+            setSelectedConnection({ source: getNodeId(d.source), target: getNodeId(d.target) });
+            setConnectionModalOpen(true);
         });
 
         node.append('circle')
@@ -272,6 +354,27 @@ export function ForceGraph() {
     }, [data]);
 
     useEffect(() => {
+        const handler = (event: Event) => {
+            const detail = (event as CustomEvent<{ action: string }>).detail;
+            if (!detail?.action || !zoomRef.current || !svgSelectionRef.current) return;
+            const svg = svgSelectionRef.current;
+            const zoom = zoomRef.current;
+            if (detail.action === 'reset') {
+                svg.transition().duration(250).call(zoom.transform as any, d3.zoomIdentity);
+                return;
+            }
+            if (detail.action === 'zoom-in') {
+                svg.transition().duration(200).call(zoom.scaleBy as any, 1.2);
+            }
+            if (detail.action === 'zoom-out') {
+                svg.transition().duration(200).call(zoom.scaleBy as any, 0.8);
+            }
+        };
+        window.addEventListener('viz-control', handler as EventListener);
+        return () => window.removeEventListener('viz-control', handler as EventListener);
+    }, []);
+
+    useEffect(() => {
         if (!selectedFilePath || !svgSelectionRef.current || !zoomRef.current || !nodesRef.current || !sizeRef.current) return;
         const node = nodesRef.current.find(n => n.id === selectedFilePath);
         if (!node || node.x == null || node.y == null) return;
@@ -286,14 +389,14 @@ export function ForceGraph() {
             .call(zoomRef.current.transform as any, transform);
     }, [selectedFilePath]);
 
-    if (!data) return null;
-
     const connections = useMemo(() => {
-        if (!selectedFile) return { imports: 0, exports: 0 };
+        if (!data || !selectedFile) return { imports: 0, exports: 0 };
         const imports = data.connections.filter(c => c.target === selectedFile.path).length;
         const exports = data.connections.filter(c => c.source === selectedFile.path).length;
         return { imports, exports };
     }, [selectedFile, data]);
+
+    if (!data) return null;
 
     return (
         <>
@@ -306,6 +409,13 @@ export function ForceGraph() {
                 onOpenChange={setModalOpen}
                 file={selectedFile}
                 connections={connections}
+            />
+
+            <ConnectionDetailsModal
+                open={connectionModalOpen}
+                onOpenChange={setConnectionModalOpen}
+                sourcePath={selectedConnection?.source}
+                targetPath={selectedConnection?.target}
             />
         </>
     );

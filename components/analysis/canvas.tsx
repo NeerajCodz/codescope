@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import {
     ZoomIn,
     ZoomOut,
@@ -20,37 +21,65 @@ import { Arc } from './visualizations/arc';
 
 export function Canvas() {
     const { viewMode, data, loading, error } = useAnalysisStore();
+    const [refreshKey, setRefreshKey] = useState(0);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    const dispatchControl = (action: 'zoom-in' | 'zoom-out' | 'reset') => {
+        window.dispatchEvent(new CustomEvent('viz-control', { detail: { action } }));
+    };
+
+    const handleRefresh = () => {
+        setRefreshKey((k) => k + 1);
+        dispatchControl('reset');
+    };
+
+    const handleFullscreen = async () => {
+        if (!document.fullscreenElement) {
+            await document.documentElement.requestFullscreen();
+        } else {
+            await document.exitFullscreen();
+        }
+    };
+
+    useEffect(() => {
+        const onChange = () => {
+            setIsFullscreen(Boolean(document.fullscreenElement));
+        };
+        document.addEventListener('fullscreenchange', onChange);
+        return () => document.removeEventListener('fullscreenchange', onChange);
+    }, []);
 
     const renderVisualization = () => {
         if (!data) return null;
         switch (viewMode) {
-            case 'treemap': return <Treemap />;
-            case 'matrix': return <Matrix />;
-            case 'dendrogram': return <Dendrogram />;
-            case 'sankey': return <Sankey />;
-            case 'bundle': return <Bundle />;
-            case 'arc': return <Arc />;
-            case 'cluster': return <ClusterGraph />;
-            default: return <ForceGraph />;
+            case 'treemap': return <Treemap key={`treemap-${refreshKey}`} />;
+            case 'matrix': return <Matrix key={`matrix-${refreshKey}`} />;
+            case 'dendrogram': return <Dendrogram key={`dendrogram-${refreshKey}`} />;
+            case 'sankey': return <Sankey key={`sankey-${refreshKey}`} />;
+            case 'bundle': return <Bundle key={`bundle-${refreshKey}`} />;
+            case 'arc': return <Arc key={`arc-${refreshKey}`} />;
+            case 'cluster': return <ClusterGraph key={`cluster-${refreshKey}`} />;
+            default: return <ForceGraph key={`force-${refreshKey}`} />;
         }
     };
 
     return (
-        <div className="flex-1 relative bg-background overflow-hidden flex flex-col">
+        <div ref={containerRef} className="flex-1 relative bg-background overflow-hidden flex flex-col">
             {/* Toolbar */}
             <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
                 <div className="flex items-center gap-1 bg-card/80 backdrop-blur-sm border border-border p-1 rounded-lg shadow-sm">
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => dispatchControl('zoom-in')}>
                         <ZoomIn className="w-4 h-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => dispatchControl('zoom-out')}>
                         <ZoomOut className="w-4 h-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleRefresh}>
                         <RefreshCw className="w-4 h-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <Maximize className="w-4 h-4" />
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleFullscreen}>
+                        <Maximize className={isFullscreen ? 'w-4 h-4 text-cyan-400' : 'w-4 h-4'} />
                     </Button>
                 </div>
             </div>
