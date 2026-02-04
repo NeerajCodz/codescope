@@ -1,5 +1,5 @@
-import { github } from './lib/github';
-import { Parser } from './lib/parser';
+import { github } from './github';
+import { Parser } from './parser';
 import { AnalysisData, FileNode, Connection, Pattern, SecurityIssue, FunctionDef } from '@/types';
 import { calcBlast, calcHealth } from '@/utils/calculations';
 
