@@ -15,6 +15,10 @@ export function Hero() {
     const [token, setToken] = useState('');
     const [showTokenInput, setShowTokenInput] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [repos, setRepos] = useState<Array<{ id: number; full_name: string; private: boolean }>>([]);
+    const [reposLoading, setReposLoading] = useState(false);
+    const [repoError, setRepoError] = useState<string | null>(null);
+    const [selectedRepo, setSelectedRepo] = useState('');
 
     useEffect(() => {
         // Check if GitHub OAuth token is in URL
@@ -33,7 +37,48 @@ export function Hero() {
                 setToken(storedToken);
             }
         }
+
     }, [searchParams]);
+
+    useEffect(() => {
+        const activeToken = token || sessionStorage.getItem('github_token') || '';
+        if (!activeToken) {
+            setRepos([]);
+            setRepoError(null);
+            return;
+        }
+
+        let isMounted = true;
+        setReposLoading(true);
+        setRepoError(null);
+
+        fetch('https://api.github.com/user/repos?per_page=100&sort=updated&visibility=all', {
+            headers: {
+                Authorization: `Bearer ${activeToken}`,
+                Accept: 'application/vnd.github+json',
+            },
+        })
+            .then(async (res) => {
+                if (!res.ok) throw new Error('Failed to load repositories');
+                return res.json();
+            })
+            .then((data: Array<{ id: number; full_name: string; private: boolean }>) => {
+                if (!isMounted) return;
+                setRepos(data || []);
+            })
+            .catch(() => {
+                if (!isMounted) return;
+                setRepoError('Could not load repositories. Check token permissions.');
+            })
+            .finally(() => {
+                if (!isMounted) return;
+                setReposLoading(false);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [token]);
 
 
     // handleGitHubLogin is now in Header component
@@ -112,6 +157,41 @@ export function Hero() {
                     <div className="max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-10 duration-700 delay-300">
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="p-8 rounded-2xl bg-card/50 backdrop-blur-sm border border-border/50 shadow-2xl space-y-4 hover:border-primary/20 transition-colors duration-500">
+                                {/* Repository Selector (when logged in) */}
+                                {(token || reposLoading || repoError || repos.length > 0) && (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="repo-select" className="text-sm font-medium flex items-center gap-2">
+                                            <Github className="w-4 h-4 text-primary" />
+                                            Select Your Repository
+                                        </Label>
+                                        <select
+                                            id="repo-select"
+                                            value={selectedRepo}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                setSelectedRepo(value);
+                                                if (value) {
+                                                    setRepoUrl(value);
+                                                }
+                                            }}
+                                            className="h-12 w-full rounded-md border border-input bg-background px-3 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        >
+                                            <option value="">Choose a repository...</option>
+                                            {repos.map((repo) => (
+                                                <option key={repo.id} value={repo.full_name}>
+                                                    {repo.full_name} {repo.private ? '(Private)' : '(Public)'}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {reposLoading && (
+                                            <p className="text-xs text-muted-foreground">Loading repositories...</p>
+                                        )}
+                                        {repoError && (
+                                            <p className="text-xs text-destructive">{repoError}</p>
+                                        )}
+                                    </div>
+                                )}
+
                                 {/* Repository URL Input */}
                                 <div className="space-y-2">
                                     <Label htmlFor="repo" className="text-sm font-medium flex items-center gap-2">
@@ -183,6 +263,7 @@ export function Hero() {
                                         </div>
                                     )}
                                 </div>
+
 
                                 {/* Submit Button */}
                                 <Button
