@@ -11,12 +11,12 @@ import {
     Shield
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAnalysisStore } from '@/components/context/analysis-context';
+import { useAnalysisStore } from '@/components/context/analysisContext';
 import { Badge } from '@/components/ui/badge';
-import { PrivacyModal } from '@/components/modals/privacy-modal';
-import { DownloadModal } from '@/components/modals/download/download-modal';
-import { ShareModal } from '@/components/modals/download/share-modal';
-import { CodeHealthModal } from '@/components/modals/code-health-modal';
+import { PrivacyModal } from '@/components/modals/privacy';
+import { DownloadModal } from '@/components/modals/download/download';
+import { ShareModal } from '@/components/modals/download/share';
+import { CodeHealthModal } from '@/components/modals/codeHealth';
 import {
     Dialog,
     DialogContent,

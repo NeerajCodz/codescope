@@ -2,89 +2,94 @@ import { github } from './github';
 import { Parser } from './parser';
 import { AnalysisData, FileNode, Connection, Pattern, SecurityIssue, FunctionDef } from '@/types';
 
+export type ProgressCallback = (step: string, fileName?: string) => void;
+export type FetchMode = 'tarball' | 'filewise';
+
 async function asyncPool<T, R>(poolLimit: number, array: T[], iteratorFn: (item: T) => Promise<R>): Promise<R[]> {
     const ret: Array<Promise<R>> = [];
     const executing: Array<Promise<void>> = [];
     for (const item of array) {
         const p = Promise.resolve().then(() => iteratorFn(item));
         ret.push(p);
-
         if (poolLimit <= array.length) {
-            const e = p.then(() => {
-                executing.splice(executing.indexOf(e), 1);
-            });
+            const e = p.then(() => { executing.splice(executing.indexOf(e), 1); });
             executing.push(e);
-            if (executing.length >= poolLimit) {
-                await Promise.race(executing);
-            }
+            if (executing.length >= poolLimit) await Promise.race(executing);
         }
     }
     return Promise.all(ret);
 }
 
-export type ProgressCallback = (step: string, fileName?: string) => void;
-
 export async function analyzeRepository(
     repoUrl: string,
     token?: string,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    fetchMode: FetchMode = 'tarball'
 ): Promise<AnalysisData> {
     if (token) github.setToken(token);
 
     const cleanUrl = repoUrl.replace(/^(https?:\/\/)?(www\.)?github\.com\//, '').replace(/\/$/, '');
     const match = cleanUrl.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/);
-
     if (!match) throw new Error('Invalid GitHub URL');
     const [, owner, repo] = match;
 
-    onProgress?.('scanning');
-    onProgress?.('scanning');
-    // 1. Scan Tree
-    const allFiles = await github.scanTree(owner, repo);
-    const codeFiles = allFiles.filter(f => f.isCode && f.size < 200000);
+    let allFiles: FileNode[];
 
-    onProgress?.('fetching');
-    // 2. Fetch & Parse
-    // Analyze all code files for complete results
-    const filesToAnalyze = codeFiles;
+    if (fetchMode === 'tarball') {
+        // ── TARBALL MODE: download entire repo in 1 request ──
+        onProgress?.('scanning');
+        const { files: bulkFiles, branch } = await github.downloadRepo(
+            owner,
+            repo,
+            undefined,
+            (msg) => onProgress?.('scanning', msg)
+        );
+        onProgress?.('scanning', `Downloaded ${bulkFiles.length} files from ${branch}`);
+        allFiles = github.buildFileNodes(bulkFiles);
+    } else {
+        // ── FILE-BY-FILE MODE: legacy GitHub Contents API ──
+        onProgress?.('scanning');
+        allFiles = await github.scanTree(owner, repo, (msg) => onProgress?.('scanning', msg));
 
-    const parsedFiles = await asyncPool<FileNode, FileNode>(10, filesToAnalyze, async (file) => {
+        const codeFiles = allFiles.filter(f => f.isCode && f.size < 200000);
+        onProgress?.('parsing', `Fetching ${codeFiles.length} files...`);
+
+        await asyncPool<FileNode, void>(10, codeFiles, async (file) => {
+            try {
+                onProgress?.('parsing', file.path);
+                const content = await github.getFile(owner, repo, file.path);
+                if (!content) return;
+                file.content = content;
+                file.lines = content.split('\n').length;
+            } catch (e) {
+                console.error(`Failed to fetch ${file.path}`, e);
+            }
+        });
+    }
+
+    const codeFilesWithContent = allFiles.filter(f => f.isCode && f.size < 200000);
+
+    // Parse all code files (CPU-bound, no network calls)
+    for (const file of codeFilesWithContent) {
+        if (!file.content) continue;
         try {
             onProgress?.('parsing', file.path);
-            const content = await github.getFile(owner, repo, file.path);
-            if (!content) return file;
-
-            file.content = content;
-            file.lines = content.split('\n').length;
-            onProgress?.('analyzing', file.path);
-            file.functions = Parser.extract(content, file.path);
-            file.variables = Parser.extractVariables(content, file.path);
-            file.complexity = {
-                score: Parser.calcComplexity(content),
-                level: 'low'
-            };
-
-            const score = file.complexity.score;
-            file.complexity.level = score > 30 ? 'high' : score > 15 ? 'medium' : 'low';
-
-            onProgress?.('security', file.path);
-            // Store temporary data for aggregation
-            file.securityIssues = Parser.detectSecurity(content, file.path);
-            file.rawImports = Parser.detectImports(content, file.path);
-
-            return file;
+            file.functions = Parser.extract(file.content, file.path);
+            file.variables = Parser.extractVariables(file.content, file.path);
+            const score = Parser.calcComplexity(file.content);
+            file.complexity = { score, level: score > 30 ? 'high' : score > 15 ? 'medium' : 'low' };
+            file.securityIssues = Parser.detectSecurity(file.content, file.path);
+            file.rawImports = Parser.detectImports(file.content, file.path);
         } catch (e) {
-            console.error(`Failed to analyze ${file.path}`, e);
-            return file;
+            console.error(`Failed to parse ${file.path}`, e);
         }
-    });
+    }
 
     const fileMap = new Map<string, FileNode>();
     allFiles.forEach(f => fileMap.set(f.path, f));
-    parsedFiles.forEach(f => fileMap.set(f.path, f));
 
     onProgress?.('building');
-    // 3. Build Dependency Graph
+    // 4. Build Dependency Graph
     const connections: Connection[] = [];
     const securityIssues: SecurityIssue[] = [];
     const patterns: Pattern[] = [];
@@ -150,10 +155,26 @@ export async function analyzeRepository(
         rawImports.forEach((imp: string) => {
             const target = files.find(f => {
                 const pathWithoutExt = f.path.replace(/\.[^/.]+$/, "");
-                return f.path.endsWith(imp) || pathWithoutExt.endsWith(imp) || (imp.startsWith('./') && file.path.split('/').slice(0, -1).join('/') + '/' + imp.replace('./', '') === pathWithoutExt);
+                const impClean = imp.replace(/\.[^/.]+$/, "");
+                // Direct path match
+                if (f.path === imp || f.path.endsWith('/' + imp)) return true;
+                // Without extension
+                if (pathWithoutExt === impClean || pathWithoutExt.endsWith('/' + impClean)) return true;
+                // Relative import resolution
+                if (imp.startsWith('./') || imp.startsWith('../')) {
+                    const fileDir = file.path.split('/').slice(0, -1).join('/');
+                    const resolved = resolveRelativePath(fileDir, imp.replace(/\.[^/.]+$/, ""));
+                    if (pathWithoutExt === resolved) return true;
+                }
+                // Index file resolution (import './utils' -> utils/index.ts)
+                if (f.path.endsWith('/index.ts') || f.path.endsWith('/index.js') || f.path.endsWith('/index.tsx') || f.path.endsWith('/index.jsx')) {
+                    const dirPath = f.path.replace(/\/index\.[^/.]+$/, "");
+                    if (dirPath.endsWith(impClean) || dirPath.endsWith('/' + impClean)) return true;
+                }
+                return false;
             });
 
-            if (target) {
+            if (target && target.path !== file.path) {
                 connections.push({
                     source: file.path,
                     target: target.path,
@@ -177,7 +198,7 @@ export async function analyzeRepository(
                 if (fnDef.file === file.path) return;
 
                 // Create/update connection
-                const existingConn = connections.find(c => 
+                const existingConn = connections.find(c =>
                     c.source === fnDef.file && c.target === file.path && c.fn === fnName
                 );
 
@@ -206,7 +227,7 @@ export async function analyzeRepository(
         });
     });
 
-    // 4. Dead Code Detection using comprehensive tracking
+    // 5. Dead Code Detection using comprehensive tracking
     let deadFunctions = 0;
     allFunctions.forEach(fn => {
         if (fn.isTopLevel && (fn.totalCalls || 0) === 0) {
@@ -245,8 +266,8 @@ export async function analyzeRepository(
         }
     });
 
-    // 5. Build Stats
-    const totalLines = files.reduce((acc, f) => acc + (f.content?.split('\n').length || 0), 0);
+    // 6. Build Stats
+    const totalLines = files.reduce((acc, f) => acc + (f.lines || 0), 0);
     const stats = {
         files: files.length,
         codeFiles: files.filter(f => f.isCode).length,
@@ -271,7 +292,7 @@ export async function analyzeRepository(
                         name: f.name,
                         path: f.path,
                         fns: f.functions?.length || 0,
-                        lines: f.content?.split('\n').length || 0
+                        lines: f.lines || 0
                     };
                 }),
                 icon: name === 'Component' ? '🧩' : name === 'Hook' ? '🪝' : '🏗️'
@@ -294,4 +315,24 @@ export async function analyzeRepository(
     };
 
     return analysis;
+}
+
+/**
+ * Resolves a relative import path from a base directory.
+ * e.g., resolveRelativePath('src/components', '../utils/helpers') => 'src/utils/helpers'
+ */
+function resolveRelativePath(baseDir: string, relativePath: string): string {
+    const baseParts = baseDir.split('/').filter(Boolean);
+    const relParts = relativePath.split('/');
+
+    for (const part of relParts) {
+        if (part === '.') continue;
+        if (part === '..') {
+            baseParts.pop();
+        } else {
+            baseParts.push(part);
+        }
+    }
+
+    return baseParts.join('/');
 }

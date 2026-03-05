@@ -17,6 +17,10 @@ export async function GET(request: NextRequest) {
         );
     }
 
+    // Build the same redirect_uri that was sent in the authorization request
+    const origin = request.nextUrl.origin;
+    const redirectUri = `${origin}/api/auth/github`;
+
     try {
         // Exchange code for access token
         const tokenResponse = await fetch(
@@ -31,6 +35,7 @@ export async function GET(request: NextRequest) {
                     client_id: clientId,
                     client_secret: clientSecret,
                     code,
+                    redirect_uri: redirectUri,
                 }),
             }
         );

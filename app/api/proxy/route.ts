@@ -1,6 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Simple in-memory rate limiter: max 30 requests per 10 seconds per IP
+const _rl = new Map<string, { count: number; resetAt: number }>();
+const RL_MAX = 30;
+const RL_WINDOW = 10_000;
+
+function isRateLimited(ip: string): boolean {
+    const now = Date.now();
+    const entry = _rl.get(ip);
+    if (!entry || now > entry.resetAt) {
+        _rl.set(ip, { count: 1, resetAt: now + RL_WINDOW });
+        return false;
+    }
+    if (entry.count >= RL_MAX) return true;
+    entry.count++;
+    return false;
+}
+
 export async function POST(request: NextRequest) {
+    const ip =
+        request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+        request.headers.get('x-real-ip') ||
+        'unknown';
+
+    if (isRateLimited(ip)) {
+        return NextResponse.json(
+            { error: 'Too many requests — slow down' },
+            { status: 429 }
+        );
+    }
+
     try {
         const { url, token } = await request.json();
 

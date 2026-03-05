@@ -15,17 +15,13 @@ interface AnalysisLoadingProps {
     currentStep?: string;
     progress?: number;
     fileName?: string;
+    fetchMode?: 'tarball' | 'filewise';
 }
 
-const initialSteps: LoadingStep[] = [
+const TARBALL_STEPS: LoadingStep[] = [
     { id: 'init', label: 'Initializing analysis', status: 'pending' },
-    { id: 'rateLimit', label: 'Checking API rate limits', status: 'pending' },
-    { id: 'scanning', label: 'Scanning repository structure', status: 'pending' },
-    { id: 'fetching', label: 'Fetching file contents', status: 'pending' },
+    { id: 'scanning', label: 'Downloading repository (tarball)', status: 'pending' },
     { id: 'parsing', label: 'Parsing source code', status: 'pending' },
-    { id: 'analyzing', label: 'Analyzing dependencies', status: 'pending' },
-    { id: 'functions', label: 'Extracting function calls', status: 'pending' },
-    { id: 'complexity', label: 'Calculating complexity', status: 'pending' },
     { id: 'security', label: 'Checking security issues', status: 'pending' },
     { id: 'patterns', label: 'Detecting design patterns', status: 'pending' },
     { id: 'building', label: 'Building dependency graph', status: 'pending' },
@@ -33,10 +29,20 @@ const initialSteps: LoadingStep[] = [
     { id: 'complete', label: 'Analysis complete', status: 'pending' },
 ];
 
-export function AnalysisLoading({ currentStep, progress = 0, fileName }: AnalysisLoadingProps) {
+const FILEWISE_STEPS: LoadingStep[] = [
+    { id: 'init', label: 'Initializing analysis', status: 'pending' },
+    { id: 'scanning', label: 'Scanning repository tree', status: 'pending' },
+    { id: 'parsing', label: 'Fetching & parsing files', status: 'pending' },
+    { id: 'security', label: 'Checking security issues', status: 'pending' },
+    { id: 'patterns', label: 'Detecting design patterns', status: 'pending' },
+    { id: 'building', label: 'Building dependency graph', status: 'pending' },
+    { id: 'brushing', label: 'Brushing up final details', status: 'pending' },
+    { id: 'complete', label: 'Analysis complete', status: 'pending' },
+];
+
+export function AnalysisLoading({ currentStep, progress = 0, fileName, fetchMode = 'tarball' }: AnalysisLoadingProps) {
+    const initialSteps = fetchMode === 'filewise' ? FILEWISE_STEPS : TARBALL_STEPS;
     const [steps, setSteps] = useState<LoadingStep[]>(initialSteps);
-    const [currentFileIndex, setCurrentFileIndex] = useState(0);
-    const [totalFiles, setTotalFiles] = useState(0);
 
     useEffect(() => {
         if (currentStep) {
@@ -119,7 +125,7 @@ export function AnalysisLoading({ currentStep, progress = 0, fileName }: Analysi
                     {steps.map((step, idx) => (
                         <div key={step.id} className="flex items-center gap-3 py-2">
                             {/* Status Icon */}
-                            <div className="flex-shrink-0">
+                            <div className="shrink-0">
                                 {step.status === 'complete' ? (
                                     <CheckCircle2 className="w-5 h-5" style={{ color: theme.colors.status.success }} />
                                 ) : step.status === 'active' ? (
@@ -166,7 +172,7 @@ export function AnalysisLoading({ currentStep, progress = 0, fileName }: Analysi
 
                 {/* Tips */}
                 <div className="text-center text-xs" style={{ color: theme.colors.text.muted }}>
-                    <p>💡 Tip: Larger repositories may take longer to analyze</p>
+                    <p>{fetchMode === 'tarball' ? '⚡ Tarball mode: downloads entire repo in 1 request' : '📁 File-by-file mode: fetches each file individually'}</p>
                     <p className="mt-1">Using a GitHub token increases rate limits from 60 to 5000 req/hour</p>
                 </div>
             </div>
