@@ -7,11 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { detectCreatedAPIs, detectUsedAPIs, groupByService, getAPIStats } from '@/lib/apiAnalyzer';
-import { CreatedAPI, UsedAPI } from '@/types/apiAnalysis';
+import { CreatedAPI, UsedAPI, APIResponseBody } from '@/types/apiAnalysis';
 import {
   ArrowUpRight, ArrowDownLeft, Globe, ChevronDown, ChevronRight,
   FileText, ExternalLink, Server, Layers, Copy, Hash,
-  ArrowRight, Braces, Send,
+  ArrowRight, Braces, Send, Info,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -179,15 +179,20 @@ function SwaggerCreatedView({ apis, groups }: { apis: CreatedAPI[]; groups: [str
 
 function EndpointCard({ api }: { api: CreatedAPI }) {
   const [expanded, setExpanded] = useState(false);
+  const [showDetailPopup, setShowDetailPopup] = useState(false);
   const style = getMethodStyle(api.method);
-  const hasDetails = (api.queryParams?.length ?? 0) > 0 || (api.bodyFields?.length ?? 0) > 0 || (api.responseFields?.length ?? 0) > 0 || (api.params?.length ?? 0) > 0;
+  const hasDetails = (api.queryParams?.length ?? 0) > 0 || (api.bodyFields?.length ?? 0) > 0 || (api.responseFields?.length ?? 0) > 0 || (api.responseBodies?.length ?? 0) > 0 || (api.params?.length ?? 0) > 0;
 
   return (
+    <>
     <Card className={cn('border overflow-hidden transition-all', expanded && 'ring-1 ring-slate-700', style.border)}>
       {/* Header */}
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded(!expanded)}
-        className={cn('w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-800/30 transition-colors', style.bg)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(!expanded); } }}
+        className={cn('w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-800/30 transition-colors cursor-pointer', style.bg)}
       >
         <Badge variant="secondary" className={cn('text-[10px] h-5 font-mono min-w-14 justify-center font-bold', style.text, style.border, style.bg)}>
           {api.method}
@@ -198,13 +203,20 @@ function EndpointCard({ api }: { api: CreatedAPI }) {
         )}
         <div className="flex items-center gap-2 shrink-0">
           <Badge variant="secondary" className="text-[8px] h-4">{api.framework}</Badge>
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowDetailPopup(true); }}
+            className="text-slate-500 hover:text-blue-400 transition-colors"
+            title="View endpoint details"
+          >
+            <Info className="w-3.5 h-3.5" />
+          </button>
           {hasDetails && (
             expanded
               ? <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
               : <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
           )}
         </div>
-      </button>
+      </div>
 
       {/* Expanded details */}
       {expanded && (
@@ -260,8 +272,46 @@ function EndpointCard({ api }: { api: CreatedAPI }) {
             </DetailSection>
           )}
 
-          {/* Response */}
-          {api.responseFields && api.responseFields.length > 0 && (
+          {/* Response Bodies - all detected responses with status codes */}
+          {api.responseBodies && api.responseBodies.length > 0 ? (
+            <DetailSection title="Responses" icon={<Braces className="w-3 h-3 text-green-400" />}>
+              <div className="space-y-2">
+                {api.responseBodies.map((rb) => (
+                  <div key={rb.status} className="bg-slate-900 rounded border border-slate-800 p-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-[8px] h-4 font-mono',
+                          rb.status >= 200 && rb.status < 300 ? 'text-green-400 border-green-500/30' :
+                          rb.status >= 400 && rb.status < 500 ? 'text-yellow-400 border-yellow-500/30' :
+                          rb.status >= 500 ? 'text-red-400 border-red-500/30' :
+                          'text-slate-400 border-slate-600'
+                        )}
+                      >
+                        {rb.status}
+                      </Badge>
+                      <span className="text-[9px] text-slate-500">{rb.label}</span>
+                    </div>
+                    {rb.fields.length > 0 && (
+                      <div className="font-mono text-[10px]">
+                        <span className="text-slate-500">{'{'}</span>
+                        {rb.fields.map((f, i) => (
+                          <div key={f} className="pl-4">
+                            <span className="text-emerald-400">{f}</span>
+                            <span className="text-slate-600">: </span>
+                            <span className="text-cyan-400">any</span>
+                            {i < rb.fields.length - 1 && <span className="text-slate-600">,</span>}
+                          </div>
+                        ))}
+                        <span className="text-slate-500">{'}'}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </DetailSection>
+          ) : api.responseFields && api.responseFields.length > 0 ? (
             <DetailSection title="Response" icon={<Braces className="w-3 h-3 text-green-400" />}>
               <div className="bg-slate-900 rounded border border-slate-800 p-2 font-mono text-[10px]">
                 <span className="text-slate-500">{'{'}</span>
@@ -276,7 +326,7 @@ function EndpointCard({ api }: { api: CreatedAPI }) {
                 <span className="text-slate-500">{'}'}</span>
               </div>
             </DetailSection>
-          )}
+          ) : null}
 
           {/* Middleware */}
           {api.middleware && api.middleware.length > 0 && (
@@ -295,6 +345,12 @@ function EndpointCard({ api }: { api: CreatedAPI }) {
         </div>
       )}
     </Card>
+
+    {/* Detail Popup Modal */}
+    {showDetailPopup && (
+      <EndpointDetailPopup api={api} onClose={() => setShowDetailPopup(false)} />
+    )}
+    </>
   );
 }
 
@@ -317,6 +373,179 @@ function ParamRow({ name, location, type, required }: { name: string; location: 
       <Badge variant="outline" className="text-[7px] h-3.5 text-slate-500 border-slate-700">{location}</Badge>
       <span className="text-slate-600">{type}</span>
       {required && <Badge variant="outline" className="text-[7px] h-3.5 text-red-400 border-red-500/30">required</Badge>}
+    </div>
+  );
+}
+
+// ─── Endpoint Detail Popup ──────────────────────────────────────────
+
+function EndpointDetailPopup({ api, onClose }: { api: CreatedAPI; onClose: () => void }) {
+  const style = getMethodStyle(api.method);
+  const overlayRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div
+      ref={overlayRef}
+      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+    >
+      <div className="bg-slate-950 border border-slate-800/50 rounded-xl shadow-2xl w-[90vw] max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-800/50">
+          <Badge variant="secondary" className={cn('text-xs h-6 font-mono min-w-16 justify-center font-bold', style.text, style.border, style.bg)}>
+            {api.method}
+          </Badge>
+          <code className="text-sm font-mono text-foreground flex-1 truncate">{api.path}</code>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
+            <ChevronDown className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <ScrollArea className="flex-1 p-5">
+          <div className="space-y-4">
+            {/* Description */}
+            {api.description && (
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Description</span>
+                <p className="text-xs text-slate-300">{api.description}</p>
+              </div>
+            )}
+
+            {/* Metadata */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-800/50">
+                <span className="text-[10px] text-slate-500 block mb-0.5">Framework</span>
+                <span className="text-xs font-medium text-slate-200">{api.framework}</span>
+              </div>
+              <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-800/50">
+                <span className="text-[10px] text-slate-500 block mb-0.5">Source</span>
+                <span className="text-xs font-mono text-slate-200 truncate block" title={api.file}>{api.file.split('/').pop()}</span>
+              </div>
+              <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-800/50">
+                <span className="text-[10px] text-slate-500 block mb-0.5">Line</span>
+                <span className="text-xs font-mono text-slate-200">{api.line}</span>
+              </div>
+            </div>
+
+            {/* Parameters */}
+            {api.params && api.params.length > 0 && (
+              <DetailSection title="Path Parameters" icon={<ArrowRight className="w-3 h-3 text-orange-400" />}>
+                {api.params.map(p => <ParamRow key={p} name={p} location="path" type="string" required />)}
+              </DetailSection>
+            )}
+            {api.queryParams && api.queryParams.length > 0 && (
+              <DetailSection title="Query Parameters" icon={<Hash className="w-3 h-3 text-yellow-400" />}>
+                {api.queryParams.map(p => <ParamRow key={p} name={p} location="query" type="string" />)}
+              </DetailSection>
+            )}
+            {api.bodyFields && api.bodyFields.length > 0 && (
+              <DetailSection title="Request Body" icon={<Send className="w-3 h-3 text-blue-400" />}>
+                <div className="bg-slate-900 rounded border border-slate-800 p-3 font-mono text-[11px]">
+                  <span className="text-slate-500">{'{'}</span>
+                  {api.bodyFields.map((f, i) => (
+                    <div key={f} className="pl-4">
+                      <span className="text-blue-400">{f}</span>
+                      <span className="text-slate-600">: </span>
+                      <span className="text-green-400">any</span>
+                      {i < api.bodyFields!.length - 1 && <span className="text-slate-600">,</span>}
+                    </div>
+                  ))}
+                  <span className="text-slate-500">{'}'}</span>
+                </div>
+              </DetailSection>
+            )}
+
+            {/* All Response Bodies */}
+            {api.responseBodies && api.responseBodies.length > 0 ? (
+              <DetailSection title="Responses" icon={<Braces className="w-3 h-3 text-green-400" />}>
+                <div className="space-y-2">
+                  {api.responseBodies.map((rb) => (
+                    <ResponseBodyCard key={rb.status} response={rb} />
+                  ))}
+                </div>
+              </DetailSection>
+            ) : api.responseFields && api.responseFields.length > 0 ? (
+              <DetailSection title="Response (200)" icon={<Braces className="w-3 h-3 text-green-400" />}>
+                <div className="bg-slate-900 rounded border border-slate-800 p-3 font-mono text-[11px]">
+                  <span className="text-slate-500">{'{'}</span>
+                  {api.responseFields.map((f, i) => (
+                    <div key={f} className="pl-4">
+                      <span className="text-emerald-400">{f}</span>
+                      <span className="text-slate-600">: </span>
+                      <span className="text-cyan-400">any</span>
+                      {i < api.responseFields!.length - 1 && <span className="text-slate-600">,</span>}
+                    </div>
+                  ))}
+                  <span className="text-slate-500">{'}'}</span>
+                </div>
+              </DetailSection>
+            ) : null}
+
+            {/* Middleware */}
+            {api.middleware && api.middleware.length > 0 && (
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Middleware</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {api.middleware.map(m => (
+                    <Badge key={m} variant="outline" className="text-[9px] text-cyan-400 border-cyan-500/30">{m}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Full file path */}
+            <div className="pt-2 border-t border-slate-800/50">
+              <span className="text-[10px] text-slate-500 block mb-1">Full Path</span>
+              <code className="text-[11px] font-mono text-slate-400 bg-slate-900/50 px-3 py-1.5 rounded border border-slate-800/50 block">
+                {api.file}:{api.line}
+              </code>
+            </div>
+          </div>
+        </ScrollArea>
+      </div>
+    </div>
+  );
+}
+
+function ResponseBodyCard({ response }: { response: APIResponseBody }) {
+  return (
+    <div className="bg-slate-900 rounded border border-slate-800 p-2.5">
+      <div className="flex items-center gap-2 mb-1.5">
+        <Badge
+          variant="outline"
+          className={cn(
+            'text-[9px] h-4.5 font-mono',
+            response.status >= 200 && response.status < 300 ? 'text-green-400 border-green-500/30' :
+            response.status >= 400 && response.status < 500 ? 'text-yellow-400 border-yellow-500/30' :
+            response.status >= 500 ? 'text-red-400 border-red-500/30' :
+            'text-slate-400 border-slate-600'
+          )}
+        >
+          {response.status}
+        </Badge>
+        <span className="text-[10px] text-slate-500">{response.label}</span>
+      </div>
+      {response.fields.length > 0 && (
+        <div className="font-mono text-[10px]">
+          <span className="text-slate-500">{'{'}</span>
+          {response.fields.map((f, i) => (
+            <div key={f} className="pl-4">
+              <span className="text-emerald-400">{f}</span>
+              <span className="text-slate-600">: </span>
+              <span className="text-cyan-400">any</span>
+              {i < response.fields.length - 1 && <span className="text-slate-600">,</span>}
+            </div>
+          ))}
+          <span className="text-slate-500">{'}'}</span>
+        </div>
+      )}
     </div>
   );
 }

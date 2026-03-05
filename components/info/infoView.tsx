@@ -9,9 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import {
-  ShieldCheck, Flame, Bug, ChevronRight, Clock, Trash2, GitFork, Copy, AlertTriangle,
-  FileCode, FunctionSquare, Network, Layers, BarChart3, TrendingUp, Zap, Package,
-  FileText, Code2, ArrowRightLeft,
+  ShieldCheck, Flame, Bug, ChevronRight, Trash2, GitFork, Copy, AlertTriangle,
+  Network, Layers, BarChart3, TrendingUp, Zap, Package,
+  Code2, ArrowRightLeft, Users, GitCommit, Calendar, GitBranch,
 } from 'lucide-react';
 import { useAnalysisStore } from '@/components/context/analysisContext';
 import { cn } from '@/lib/utils';
@@ -20,7 +20,7 @@ import { DependenciesModal } from '@/components/modals/features/dependencies';
 import { UnusedFunctionsModal } from '@/components/modals/unusedFunctions';
 
 export function InfoView() {
-  const { data } = useAnalysisStore();
+  const { data, contributors, commits, branches } = useAnalysisStore();
   const [patternQuery, setPatternQuery] = useState('');
   const [antiOnly, setAntiOnly] = useState(false);
   const [warningOnly, setWarningOnly] = useState(false);
@@ -32,22 +32,6 @@ export function InfoView() {
     .filter(f => f.complexity && f.complexity.score > 20)
     .sort((a, b) => (b.complexity?.score || 0) - (a.complexity?.score || 0))
     .slice(0, 8);
-
-  const deadCodeStats = useMemo(() => {
-    if (!data) return { count: 0, files: 0, percentage: 0 };
-    const deadFns = data.files.flatMap(f =>
-      (f.functions || []).filter(fn => fn.isDead)
-    );
-    const affectedFiles = new Set(
-      data.files.filter(f => (f.functions || []).some(fn => fn.isDead)).map(f => f.path)
-    ).size;
-    const totalFns = data.stats.functions || 1;
-    return {
-      count: deadFns.length,
-      files: affectedFiles,
-      percentage: Math.round((deadFns.length / totalFns) * 100),
-    };
-  }, [data]);
 
   // Extended stats
   const extendedStats = useMemo(() => {
@@ -100,6 +84,58 @@ export function InfoView() {
     };
   }, [data]);
 
+  // Git stats
+  const gitStats = useMemo(() => {
+    const totalCommits = commits.length;
+    const totalContributors = contributors.length;
+    const totalBranches = branches.length;
+    const protectedBranches = branches.filter(b => b.isProtected).length;
+
+    // Commit frequency — group by day-of-week
+    const dayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const commitsByDay = new Array(7).fill(0);
+    const commitsByMonth: Record<string, number> = {};
+    let firstCommitDate = '';
+    let lastCommitDate = '';
+
+    for (const c of commits) {
+      const d = new Date(c.author.date);
+      if (!isNaN(d.getTime())) {
+        commitsByDay[d.getDay()]++;
+        const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        commitsByMonth[monthKey] = (commitsByMonth[monthKey] || 0) + 1;
+        if (!firstCommitDate || c.author.date < firstCommitDate) firstCommitDate = c.author.date;
+        if (!lastCommitDate || c.author.date > lastCommitDate) lastCommitDate = c.author.date;
+      }
+    }
+
+    // Top contributors
+    const topContributors = [...contributors]
+      .sort((a, b) => b.contributions - a.contributions)
+      .slice(0, 10);
+
+    // Monthly activity (last 12 months)
+    const monthlyActivity = Object.entries(commitsByMonth)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12);
+
+    const maxMonthly = Math.max(...monthlyActivity.map(([, v]) => v), 1);
+
+    return {
+      totalCommits,
+      totalContributors,
+      totalBranches,
+      protectedBranches,
+      commitsByDay,
+      dayMap,
+      topContributors,
+      monthlyActivity,
+      maxMonthly,
+      firstCommitDate,
+      lastCommitDate,
+    };
+  }, [commits, contributors, branches]);
+
   const patternStats = useMemo(() => {
     const patterns = data?.patterns ?? [];
     const totalPatterns = patterns.length;
@@ -146,8 +182,9 @@ export function InfoView() {
               </Badge>
             </div>
           </div>
-          <TabsList className="grid w-full max-w-md grid-cols-4 bg-slate-900 border border-slate-800 h-9 p-1">
+          <TabsList className="grid w-full max-w-lg grid-cols-5 bg-slate-900 border border-slate-800 h-9 p-1">
             <TabsTrigger value="overview" className="text-[10px] uppercase font-bold py-1">Info</TabsTrigger>
+            <TabsTrigger value="git" className="text-[10px] uppercase font-bold py-1">Git</TabsTrigger>
             <TabsTrigger value="patterns" className="text-[10px] uppercase font-bold py-1">Patterns</TabsTrigger>
             <TabsTrigger value="security" className="text-[10px] uppercase font-bold py-1">Security</TabsTrigger>
             <TabsTrigger value="issues" className="text-[10px] uppercase font-bold py-1">Issues</TabsTrigger>
@@ -159,27 +196,6 @@ export function InfoView() {
           <TabsContent value="overview" className="h-full m-0">
             <ScrollArea className="h-full px-6 py-4">
               <div className="space-y-6 max-w-3xl">
-
-                {/* Primary Stats Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {[
-                    { label: 'Total Files', value: data.stats.files, icon: FileText, color: 'text-blue-400', bg: 'bg-blue-500/5 border-blue-500/10' },
-                    { label: 'Code Files', value: extendedStats?.codeFiles || data.stats.codeFiles, icon: FileCode, color: 'text-cyan-400', bg: 'bg-cyan-500/5 border-cyan-500/10' },
-                    { label: 'Functions', value: data.stats.functions, icon: FunctionSquare, color: 'text-emerald-400', bg: 'bg-emerald-500/5 border-emerald-500/10' },
-                    { label: 'Connections', value: data.stats.connections, icon: Network, color: 'text-purple-400', bg: 'bg-purple-500/5 border-purple-500/10' },
-                  ].map((stat) => {
-                    const SIcon = stat.icon;
-                    return (
-                      <Card key={stat.label} className={cn('p-3 border', stat.bg)}>
-                        <div className="flex items-center justify-between mb-1">
-                          <SIcon className={cn('w-3.5 h-3.5', stat.color)} />
-                          <span className="text-[9px] text-muted-foreground uppercase">{stat.label}</span>
-                        </div>
-                        <p className={cn('text-xl font-bold', stat.color)}>{stat.value.toLocaleString()}</p>
-                      </Card>
-                    );
-                  })}
-                </div>
 
                 {/* Secondary Stats */}
                 {extendedStats && (
@@ -310,44 +326,6 @@ export function InfoView() {
 
                 <Separator className="opacity-30" />
 
-                {/* Dead Code Section */}
-                <div className="space-y-3">
-                  <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                    Dead Code Analysis
-                  </h3>
-                  <Card className="p-4 bg-orange-500/5 border-orange-500/10">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-orange-500/10 shrink-0">
-                        <Trash2 className="w-5 h-5 text-orange-400" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-orange-300">{deadCodeStats.count} Unused Functions</p>
-                        <p className="text-[10px] text-slate-500">across {deadCodeStats.files} files ({deadCodeStats.percentage}% of total)</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-2xl font-bold text-orange-400">{deadCodeStats.percentage}%</p>
-                      </div>
-                    </div>
-                    <div className="h-2 rounded-full bg-orange-500/10 mb-3">
-                      <div
-                        className="h-full rounded-full bg-orange-500 transition-all"
-                        style={{ width: `${Math.min(100, deadCodeStats.percentage)}%` }}
-                      />
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full text-[10px] text-orange-400 border-orange-500/30 hover:bg-orange-500/10"
-                      onClick={() => setDeadCodeOpen(true)}
-                    >
-                      <Trash2 className="w-3 h-3 mr-1" />
-                      View Dead Code Details
-                    </Button>
-                  </Card>
-                </div>
-
-                <Separator className="opacity-30" />
-
                 {/* Architecture */}
                 <div className="space-y-3">
                   <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
@@ -419,22 +397,196 @@ export function InfoView() {
                   </>
                 )}
 
-                {/* Activity Log */}
+              </div>
+            </ScrollArea>
+          </TabsContent>
+
+          {/* ── Git ── */}
+          <TabsContent value="git" className="h-full m-0">
+            <ScrollArea className="h-full px-6 py-4">
+              <div className="space-y-6 max-w-3xl">
+
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {[
+                    { label: 'Commits', value: gitStats.totalCommits, icon: GitCommit, color: 'text-blue-400' },
+                    { label: 'Contributors', value: gitStats.totalContributors, icon: Users, color: 'text-green-400' },
+                    { label: 'Branches', value: gitStats.totalBranches, icon: GitBranch, color: 'text-purple-400' },
+                    { label: 'Protected', value: gitStats.protectedBranches, icon: ShieldCheck, color: 'text-amber-400' },
+                  ].map(s => {
+                    const SIcon = s.icon;
+                    return (
+                      <Card key={s.label} className="p-3 bg-slate-900/50 border-slate-800">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <SIcon className={cn('w-3.5 h-3.5', s.color)} />
+                          <span className="text-[9px] text-muted-foreground uppercase">{s.label}</span>
+                        </div>
+                        <p className="text-lg font-bold text-slate-200">{s.value}</p>
+                      </Card>
+                    );
+                  })}
+                </div>
+
+                {/* Commit Activity by Day of Week */}
+                {gitStats.totalCommits > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                      Commit Activity by Day
+                    </h3>
+                    <Card className="p-4 bg-slate-900/50 border-slate-800">
+                      <div className="grid grid-cols-7 gap-2">
+                        {gitStats.dayMap.map((day, i) => {
+                          const max = Math.max(...gitStats.commitsByDay, 1);
+                          const pct = Math.round((gitStats.commitsByDay[i] / max) * 100);
+                          return (
+                            <div key={day} className="text-center">
+                              <div className="h-20 flex items-end justify-center mb-1.5">
+                                <div
+                                  className="w-6 bg-blue-500 rounded-t transition-all"
+                                  style={{ height: `${Math.max(4, pct)}%`, opacity: 0.7 }}
+                                />
+                              </div>
+                              <p className="text-xs font-bold text-slate-300">{gitStats.commitsByDay[i]}</p>
+                              <p className="text-[9px] text-slate-500">{day}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Monthly Activity */}
+                {gitStats.monthlyActivity.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                      Monthly Activity
+                    </h3>
+                    <Card className="p-4 bg-slate-900/50 border-slate-800">
+                      <div className="space-y-1.5">
+                        {gitStats.monthlyActivity.map(([month, count]) => (
+                          <div key={month} className="flex items-center gap-3">
+                            <span className="text-[10px] text-slate-500 w-16 shrink-0 font-mono">{month}</span>
+                            <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-blue-500 rounded-full transition-all"
+                                style={{ width: `${(count / gitStats.maxMonthly) * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] text-slate-400 w-8 text-right font-mono">{count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  </div>
+                )}
+
                 <Separator className="opacity-30" />
-                <div className="space-y-3">
-                  <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Activity Log</h3>
-                  <div className="flex gap-3 relative before:absolute before:left-2 before:top-4 before:bottom-0 before:w-px before:bg-slate-800">
-                    <div className="w-4 h-4 rounded-full bg-blue-500/20 border border-blue-500 flex items-center justify-center z-10">
-                      <Clock className="w-2.5 h-2.5 text-blue-400" />
+
+                {/* Top Contributors */}
+                {gitStats.topContributors.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        Top Contributors
+                      </h3>
+                      <Badge variant="outline" className="text-[8px] text-green-400 border-green-500/30">
+                        {gitStats.totalContributors} total
+                      </Badge>
                     </div>
-                    <div>
-                      <p className="text-[11px] font-medium text-slate-300">Analysis completed</p>
-                      <p className="text-[9px] text-slate-500">
-                        {data.stats.files} files · {data.stats.functions} functions · {data.stats.connections} connections analyzed
-                      </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {gitStats.topContributors.map((c, i) => (
+                        <Card key={c.login} className="p-3 bg-slate-900/50 border-slate-800 hover:border-slate-700 transition-all">
+                          <div className="flex items-center gap-3">
+                            <div className="relative shrink-0">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={c.avatar_url}
+                                alt={c.login}
+                                className="w-8 h-8 rounded-full border border-slate-700"
+                              />
+                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-slate-800 rounded-full flex items-center justify-center border border-slate-700">
+                                <span className="text-[7px] font-bold text-slate-400">#{i + 1}</span>
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-slate-200 truncate">{c.name || c.login}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[9px] text-slate-500">{c.contributions} contributions</span>
+                                <span className="text-[9px] text-slate-600">·</span>
+                                <span className="text-[9px] text-slate-500">{c.commits} commits</span>
+                              </div>
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
                     </div>
                   </div>
-                </div>
+                )}
+
+                {/* Branches */}
+                {branches.length > 0 && (
+                  <>
+                    <Separator className="opacity-30" />
+                    <div className="space-y-3">
+                      <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        Branches
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {branches.slice(0, 12).map(b => (
+                          <Card key={b.name} className={cn(
+                            'p-2.5 border-slate-800 flex items-center gap-2',
+                            b.isDefault ? 'bg-blue-500/5 border-blue-500/20' : 'bg-slate-900/50'
+                          )}>
+                            <GitBranch className={cn('w-3 h-3 shrink-0', b.isDefault ? 'text-blue-400' : 'text-slate-500')} />
+                            <span className="text-[10px] font-mono text-slate-300 truncate flex-1">{b.name}</span>
+                            {b.isDefault && <Badge variant="outline" className="text-[7px] text-blue-400 border-blue-500/30">default</Badge>}
+                            {b.isProtected && <Badge variant="outline" className="text-[7px] text-amber-400 border-amber-500/30">protected</Badge>}
+                          </Card>
+                        ))}
+                      </div>
+                      {branches.length > 12 && (
+                        <p className="text-[10px] text-slate-600 text-center">+{branches.length - 12} more branches</p>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Timeline */}
+                {gitStats.firstCommitDate && (
+                  <>
+                    <Separator className="opacity-30" />
+                    <div className="space-y-3">
+                      <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                        Timeline
+                      </h3>
+                      <Card className="p-4 bg-slate-900/50 border-slate-800">
+                        <div className="flex items-center justify-between">
+                          <div className="text-center">
+                            <Calendar className="w-3.5 h-3.5 text-slate-500 mx-auto mb-1" />
+                            <p className="text-[9px] text-slate-500 uppercase">First Commit</p>
+                            <p className="text-xs font-semibold text-slate-300">{new Date(gitStats.firstCommitDate).toLocaleDateString()}</p>
+                          </div>
+                          <div className="flex-1 mx-4 h-px bg-linear-to-r from-blue-500/40 via-slate-700 to-green-500/40" />
+                          <div className="text-center">
+                            <Calendar className="w-3.5 h-3.5 text-slate-500 mx-auto mb-1" />
+                            <p className="text-[9px] text-slate-500 uppercase">Latest Commit</p>
+                            <p className="text-xs font-semibold text-slate-300">{new Date(gitStats.lastCommitDate).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                      </Card>
+                    </div>
+                  </>
+                )}
+
+                {gitStats.totalCommits === 0 && gitStats.totalContributors === 0 && (
+                  <div className="text-center py-20 text-slate-600">
+                    <GitCommit className="w-12 h-12 mx-auto mb-4 opacity-10" />
+                    <h4 className="text-sm font-bold mb-1">No Git Data</h4>
+                    <p className="text-xs">Git data will appear after fetching repository information.</p>
+                  </div>
+                )}
+
               </div>
             </ScrollArea>
           </TabsContent>

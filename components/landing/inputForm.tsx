@@ -36,7 +36,13 @@ export function InputForm() {
 
         const repo = `${match[1]}/${match[2]}`;
         const params = new URLSearchParams({ repo });
-        if (token.trim()) params.set('token', token.trim());
+
+        // SECURITY: Never put tokens in URLs - store securely in sessionStorage
+        if (token.trim()) {
+            try {
+                sessionStorage.setItem('github_token', token.trim());
+            } catch { /* quota */ }
+        }
 
         router.push(`/analysis?${params.toString()}`);
     };

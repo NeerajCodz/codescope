@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -18,8 +18,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-
-type GitHubUser = { login: string; avatar_url?: string };
+import { useGitHubUser } from '@/hooks/useGitHubUser';
 
 interface AnalysisTopBarProps {
   onSettingsOpen: () => void;
@@ -35,30 +34,8 @@ export function AnalysisTopBar({ onSettingsOpen }: AnalysisTopBarProps) {
   const [showShare, setShowShare] = useState(false);
   const [showHealth, setShowHealth] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
-  const [token, setToken] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return sessionStorage.getItem('github_token');
-  });
-  const [user, setUser] = useState<GitHubUser | null>(null);
+  const { token, user, logout } = useGitHubUser();
   const [logoutOpen, setLogoutOpen] = useState(false);
-
-  useEffect(() => {
-    if (token) {
-      fetch('https://api.github.com/user', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then(async (res) => {
-          if (!res.ok) throw new Error();
-          return res.json();
-        })
-        .then((data: GitHubUser) => setUser({ login: data.login, avatar_url: data.avatar_url }))
-        .catch(() => {
-          sessionStorage.removeItem('github_token');
-          setToken(null);
-          setUser(null);
-        });
-    }
-  }, [token]);
 
   const handleBack = () => router.push('/');
 
@@ -73,9 +50,7 @@ export function AnalysisTopBar({ onSettingsOpen }: AnalysisTopBarProps) {
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem('github_token');
-    setToken(null);
-    setUser(null);
+    logout();
     setLogoutOpen(false);
   };
 

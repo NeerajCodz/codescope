@@ -227,10 +227,81 @@ export async function analyzeRepository(
         });
     });
 
-    // 5. Dead Code Detection using comprehensive tracking
+    // 5. Dead Code Detection — Call-graph reachability analysis
+    //    Build a call graph and trace from entry points (exports, handlers, etc.)
+    //    to determine truly unreachable functions.
+
+    // Build a caller→callee adjacency map
+    const callGraph = new Map<string, Set<string>>(); // fn key → set of called fn keys
+    const fnKey = (fn: FunctionDef) => `${fn.file}::${fn.name}`;
+
+    allFunctions.forEach(fn => callGraph.set(fnKey(fn), new Set()));
+
+    // Populate call edges from Parser.findCalls data
+    files.forEach(file => {
+        if (!file.content) return;
+        const callData = Parser.findCalls(file.content, file.path, allFunctions);
+        // Each file's functions are callers; callData tells us what they call
+        const fileFns = allFunctions.filter(f => f.file === file.path);
+        Object.entries(callData).forEach(([calledName, callInfo]) => {
+            const calledDefs = fnDefMap.get(calledName);
+            if (!calledDefs) return;
+            calledDefs.forEach(calledDef => {
+                // Every function in this file that could be calling calledName
+                // (simplified: treat the whole file as the caller context)
+                fileFns.forEach(callerFn => {
+                    const key = fnKey(callerFn);
+                    callGraph.get(key)?.add(fnKey(calledDef));
+                });
+            });
+        });
+    });
+
+    // Identify entry points: exported functions, lifecycle hooks, event handlers,
+    // React components, API route handlers, test functions, main functions
+    const entryPointKeys = new Set<string>();
+    allFunctions.forEach(fn => {
+        const key = fnKey(fn);
+        const name = fn.name.toLowerCase();
+        const isEntry =
+            fn.isExported ||
+            // React lifecycle / hooks
+            name.startsWith('use') ||
+            // Next.js special exports
+            ['default', 'getstaticprops', 'getserversideprops', 'generatemetadata',
+             'generatestaticparams', 'get', 'post', 'put', 'delete', 'patch', 'head', 'options',
+             'middleware', 'layout', 'page', 'loading', 'error', 'notfound'].includes(name) ||
+            // Common entry patterns
+            name === 'main' || name === 'init' || name === 'setup' ||
+            // Event handlers / callbacks
+            name.startsWith('on') || name.startsWith('handle') ||
+            // Tests
+            name.startsWith('test') || name.startsWith('describe') || name.startsWith('it') ||
+            // Has external callers
+            (fn.totalCalls || 0) > 0;
+
+        if (isEntry) entryPointKeys.add(key);
+    });
+
+    // BFS from entry points to find all reachable functions
+    const reachable = new Set<string>();
+    const queue = [...entryPointKeys];
+    while (queue.length > 0) {
+        const current = queue.pop()!;
+        if (reachable.has(current)) continue;
+        reachable.add(current);
+        const callees = callGraph.get(current);
+        if (callees) {
+            for (const callee of callees) {
+                if (!reachable.has(callee)) queue.push(callee);
+            }
+        }
+    }
+
+    // Mark unreachable top-level functions as dead
     let deadFunctions = 0;
     allFunctions.forEach(fn => {
-        if (fn.isTopLevel && (fn.totalCalls || 0) === 0) {
+        if (fn.isTopLevel && !reachable.has(fnKey(fn))) {
             deadFunctions++;
             fn.isDead = true;
         }

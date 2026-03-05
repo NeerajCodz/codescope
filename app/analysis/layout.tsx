@@ -31,11 +31,10 @@ interface GitDataResponse {
   error?: string;
 }
 
-/** Read token from URL params, then sessionStorage fallback */
-function resolveToken(urlToken: string | null): string {
-  if (urlToken) return urlToken;
+/** Read token from sessionStorage/localStorage — NEVER from URL */
+function resolveToken(): string {
   if (typeof window !== 'undefined') {
-    return sessionStorage.getItem('github_token') || '';
+    return sessionStorage.getItem('github_token') || localStorage.getItem('github_token') || '';
   }
   return '';
 }
@@ -118,6 +117,112 @@ function AnalysisLayoutInner({ children }: { children: React.ReactNode }) {
   const [currentFile, setCurrentFile] = useState('');
   const { toast } = useToast();
 
+  // ── Shared helpers ──
+  const loadPRs = async (owner: string, repo: string, token?: string | null) => {
+    try {
+      const { getPRs } = await import('@/lib/git/prs');
+      const prs = await getPRs(owner, repo, 'all', 30, token);
+      if (prs.length) setPRs(prs);
+    } catch { /* non-critical */ }
+  };
+
+  const loadGitData = async (repo: string, token?: string | null) => {
+    const cleanUrl = repo
+      .replace(/^(https?:\/\/)?(www\.)?github\.com\//, '')
+      .replace(/\/$/, '');
+    const match = cleanUrl.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/);
+    if (!match) return;
+    const [, o, r] = match;
+
+    try {
+      const response = await fetch('/api/git-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner: o, repo: r, token: token || null }),
+      });
+      if (!response.ok) { console.warn('Git data fetch failed:', response.status); return; }
+      const gitData = await response.json() as GitDataResponse;
+      if (gitData.stats?.rateLimited && !token) console.info('Git data partially rate-limited (no token)');
+      if (gitData.branches?.length) setBranches(gitData.branches);
+      if (gitData.contributors?.length) setContributors(gitData.contributors);
+      if (gitData.commits?.length) setCommits(gitData.commits);
+      loadPRs(o, r, token);
+    } catch (err) { console.warn('Git data fetch error:', err); }
+  };
+
+  // ── Simple Mode: client-side GitHub API, zero server ──
+  const runSimpleAnalysis = async (repo: string, token: string) => {
+    const cleanUrl = repo
+      .replace(/^(https?:\/\/)?(www\.)?github\.com\//, '')
+      .replace(/\/$/, '');
+    const repoMatch = cleanUrl.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/);
+    if (!repoMatch) throw new Error('Invalid GitHub URL');
+    const [, owner, repoName] = repoMatch;
+
+    if (token) simpleGithub.setToken(token);
+
+    setCurrentStep('Scanning repository tree...');
+    setProgress(10);
+    const { files: treeFiles, branch } = await simpleGithub.scanTree(owner, repoName);
+    setProgress(30);
+
+    setCurrentStep('Fetching file contents...');
+    const enrichedFiles = await simpleGithub.fetchAllContents(
+      owner, repoName, treeFiles, branch,
+      (msg) => { setCurrentFile(msg); setProgress(prev => Math.min(prev + 1, 80)); },
+    );
+    setProgress(80);
+
+    setCurrentStep('Parsing & analyzing...');
+    const contentsMap = new Map<string, string>();
+    for (const file of enrichedFiles) {
+      if (file.content) contentsMap.set(file.path, file.content);
+    }
+    const { parseFilesFromContents } = await import('@/lib/parser');
+    const analysisData = parseFilesFromContents(contentsMap, repo);
+    setProgress(95);
+
+    // Git data — client-side only
+    setCurrentStep('Loading git data...');
+    const gitResult = await simpleGithub.fetchGitData(owner, repoName, token);
+    if (gitResult.branches?.length) setBranches(gitResult.branches);
+    if (gitResult.commits?.length) setCommits(gitResult.commits);
+    if (gitResult.contributors?.length) setContributors(gitResult.contributors);
+    try {
+      const prs = await simpleGithub.fetchPRs(owner, repoName);
+      if (prs.length) setPRs(prs);
+    } catch { /* non-critical */ }
+
+    setCurrentStep('complete');
+    setProgress(100);
+    setData(analysisData);
+    saveToCache(repo, useAnalysisStore.getState());
+    persistToDb(repo, analysisData);
+  };
+
+  // ── Advanced Mode: server-side tarball + /api routes ──
+  const runAdvancedAnalysis = async (repo: string, token: string) => {
+    const gitDataPromise = loadGitData(repo, token);
+
+    const analysisData = await analyzeRepository(
+      repo,
+      token || undefined,
+      (step, file) => {
+        setCurrentStep(step);
+        setCurrentFile(file || '');
+        setProgress(prev => Math.min(prev + 4, 95));
+      },
+      fetchMode,
+    );
+
+    setCurrentStep('complete');
+    setProgress(100);
+    setData(analysisData);
+    await gitDataPromise;
+    saveToCache(repo, useAnalysisStore.getState());
+    persistToDb(repo, analysisData);
+  };
+
   const handleAnalysis = async (tokenOverride?: string) => {
     const importFlag = searchParams.get('import');
     if (importFlag) {
@@ -137,8 +242,8 @@ function AnalysisLayoutInner({ children }: { children: React.ReactNode }) {
     }
 
     const repo = searchParams.get('repo');
-    // Token precedence: argument override → URL param → sessionStorage
-    const token = tokenOverride || resolveToken(searchParams.get('token'));
+    // SECURITY: Never read token from URL — only from secure storage
+    const token = tokenOverride || resolveToken();
 
     if (!repo) {
       router.push('/');
@@ -152,18 +257,23 @@ function AnalysisLayoutInner({ children }: { children: React.ReactNode }) {
       setGithubToken(token);
     }
 
-    // Check comprehensive cache first
-    const fullCache = loadFromCache(repo);
+    // Check comprehensive cache first (mode-specific)
+    const fullCache = loadFromCache(repo, mode);
     if (fullCache?.analysis) {
-      restoreFromExport(fullCache, {
-        setData, setBranches, setCommits, setContributors, setPRs,
-        setBranchCommits, setProcesses, setDiagrams, setViewMode,
-        setSelectedBranch,
-      });
-      toast({ title: 'Loaded from cache', description: 'Complete analysis state restored' });
-      // Still refresh git data in background
-      loadGitData(repo, token);
-      return;
+      // Verify the cache actually belongs to this repo
+      const cleanRepo = repo.replace(/^(https?:\/\/)?(www\.)?github\.com\//, '').replace(/\/$/, '');
+      const cacheRepo = fullCache.repo?.replace(/^(https?:\/\/)?(www\.)?github\.com\//, '').replace(/\/$/, '');
+      if (cacheRepo === cleanRepo) {
+        restoreFromExport(fullCache, {
+          setData, setBranches, setCommits, setContributors, setPRs,
+          setBranchCommits, setProcesses, setDiagrams, setViewMode,
+          setSelectedBranch,
+        });
+        toast({ title: 'Loaded from cache', description: 'Complete analysis state restored' });
+        // Still refresh git data in background
+        loadGitData(repo, token);
+        return;
+      }
     }
 
     // Fallback: check legacy sessionStorage cache
@@ -189,93 +299,9 @@ function AnalysisLayoutInner({ children }: { children: React.ReactNode }) {
       await new Promise(resolve => setTimeout(resolve, 200));
 
       if (mode === 'simple') {
-        // ── Simple Mode: client-side GitHub API only ──
-        const cleanUrl = repo
-          .replace(/^(https?:\/\/)?(www\.)?github\.com\//, '')
-          .replace(/\/$/, '');
-        const repoMatch = cleanUrl.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/);
-        if (!repoMatch) throw new Error('Invalid GitHub URL');
-        const [, owner, repoName] = repoMatch;
-
-        if (token) simpleGithub.setToken(token);
-
-        setCurrentStep('Scanning repository tree...');
-        setProgress(10);
-        const { files: treeFiles, branch } = await simpleGithub.scanTree(owner, repoName);
-        setProgress(30);
-
-        setCurrentStep('Fetching file contents...');
-        const enrichedFiles = await simpleGithub.fetchAllContents(
-          owner,
-          repoName,
-          treeFiles,
-          branch,
-          (msg) => {
-            setCurrentFile(msg);
-            setProgress(prev => Math.min(prev + 1, 80));
-          }
-        );
-        setProgress(80);
-
-        setCurrentStep('Parsing & analyzing...');
-        // Build a full AnalysisData from the fetched file contents
-        const contentsMap = new Map<string, string>();
-        for (const file of enrichedFiles) {
-          if (file.content) contentsMap.set(file.path, file.content);
-        }
-        const { parseFilesFromContents } = await import('@/lib/parser');
-        const analysisData = parseFilesFromContents(contentsMap, repo);
-        setProgress(95);
-
-        // Load git data in parallel (client-side)
-        setCurrentStep('Loading git data...');
-        const gitResult = await simpleGithub.fetchGitData(owner, repoName, token);
-        if (gitResult.branches?.length) setBranches(gitResult.branches);
-        if (gitResult.commits?.length) setCommits(gitResult.commits);
-        if (gitResult.contributors?.length) setContributors(gitResult.contributors);
-
-        // Load PRs
-        try {
-          const prs = await simpleGithub.fetchPRs(owner, repoName);
-          if (prs.length) setPRs(prs);
-        } catch { /* non-critical */ }
-
-        setCurrentStep('complete');
-        setProgress(100);
-        setData(analysisData);
-
-        // Comprehensive cache — save ALL data
-        saveToCache(repo, useAnalysisStore.getState());
-
-        // Non-blocking DB persistence (fire-and-forget)
-        persistToDb(repo, analysisData);
+        await runSimpleAnalysis(repo, token);
       } else {
-        // ── Advanced Mode: server-side tarball analysis ──
-        // Kick off git data load in parallel
-        const gitDataPromise = loadGitData(repo, token);
-
-        const analysisData = await analyzeRepository(
-          repo,
-          token || undefined,
-          (step, file) => {
-            setCurrentStep(step);
-            setCurrentFile(file || '');
-            setProgress(prev => Math.min(prev + 4, 95));
-          },
-          fetchMode
-        );
-
-        setCurrentStep('complete');
-        setProgress(100);
-        setData(analysisData);
-
-        await gitDataPromise;
-
-        // Comprehensive cache — save ALL data after git data is loaded
-        saveToCache(repo, useAnalysisStore.getState());
-
-        // Non-blocking DB persistence (fire-and-forget)
-        persistToDb(repo, analysisData);
+        await runAdvancedAnalysis(repo, token);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to analyze repository';
@@ -293,52 +319,6 @@ function AnalysisLayoutInner({ children }: { children: React.ReactNode }) {
       }
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadGitData = async (repo: string, token?: string | null) => {
-    const cleanUrl = repo
-      .replace(/^(https?:\/\/)?(www\.)?github\.com\//, '')
-      .replace(/\/$/, '');
-    const match = cleanUrl.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/);
-    if (!match) return;
-    const [, o, r] = match;
-
-    try {
-      const response = await fetch('/api/git-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ owner: o, repo: r, token: token || null }),
-      });
-
-      if (!response.ok) {
-        console.warn('Git data fetch failed:', response.status);
-        return;
-      }
-
-      const gitData = await response.json() as GitDataResponse;
-
-      if (gitData.stats?.rateLimited && !token) {
-        // Silently note it - don't interrupt UX for lens data
-        console.info('Git data partially rate-limited (no token)');
-      }
-
-      if (gitData.branches?.length) setBranches(gitData.branches);
-      if (gitData.contributors?.length) setContributors(gitData.contributors);
-      if (gitData.commits?.length) setCommits(gitData.commits);
-      loadPRs(o, r, token);
-    } catch (err) {
-      console.warn('Git data fetch error:', err);
-    }
-  };
-
-  const loadPRs = async (owner: string, repo: string, token?: string | null) => {
-    try {
-      const { getPRs } = await import('@/lib/git/prs');
-      const prs = await getPRs(owner, repo, 'all', 30, token);
-      if (prs.length) setPRs(prs);
-    } catch {
-      // PRs are non-critical
     }
   };
 

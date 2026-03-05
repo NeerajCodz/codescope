@@ -275,13 +275,13 @@ function SurrealLiveGraphInner() {
   const connectedNodes = useMemo(() => {
     if (!selectedNode) return { incoming: [] as string[], outgoing: [] as string[] };
     const nodeId = selectedNode.fullPath;
-    const incoming: string[] = [];
-    const outgoing: string[] = [];
+    const incomingSet = new Set<string>();
+    const outgoingSet = new Set<string>();
     for (const e of rfEdges) {
-      if (e.source === nodeId) outgoing.push(e.target);
-      if (e.target === nodeId) incoming.push(e.source);
+      if (e.source === nodeId) outgoingSet.add(e.target);
+      if (e.target === nodeId) incomingSet.add(e.source);
     }
-    return { incoming, outgoing };
+    return { incoming: [...incomingSet], outgoing: [...outgoingSet] };
   }, [selectedNode, rfEdges]);
 
   // Graph statistics

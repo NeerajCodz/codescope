@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
     ChevronLeft,
@@ -25,12 +25,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { useGitHubUser } from '@/hooks/useGitHubUser';
 import { LogOut } from 'lucide-react';
-
-type GitHubUser = {
-    login: string;
-    avatar_url?: string;
-};
 
 export function Header() {
     const router = useRouter();
@@ -42,31 +38,8 @@ export function Header() {
     const [showShare, setShowShare] = useState(false);
     const [showHealth, setShowHealth] = useState(false);
     const [showPrivacy, setShowPrivacy] = useState(false);
-    const [token, setToken] = useState<string | null>(null);
-    const [user, setUser] = useState<GitHubUser | null>(null);
+    const { token, user, logout } = useGitHubUser();
     const [logoutOpen, setLogoutOpen] = useState(false);
-
-    useEffect(() => {
-        const storedToken = sessionStorage.getItem('github_token');
-        setToken(storedToken);
-        if (storedToken) {
-            fetch('https://api.github.com/user', {
-                headers: {
-                    Authorization: `Bearer ${storedToken}`,
-                },
-            })
-                .then(async (res) => {
-                    if (!res.ok) throw new Error('Failed to fetch user');
-                    return res.json();
-                })
-                .then((data: GitHubUser) => setUser({ login: data.login, avatar_url: data.avatar_url }))
-                .catch(() => {
-                    sessionStorage.removeItem('github_token');
-                    setToken(null);
-                    setUser(null);
-                });
-        }
-    }, []);
 
     const handleBack = () => {
         router.push('/');
@@ -84,9 +57,7 @@ export function Header() {
     };
 
     const handleLogout = () => {
-        sessionStorage.removeItem('github_token');
-        setToken(null);
-        setUser(null);
+        logout();
         setLogoutOpen(false);
     };
 
@@ -103,7 +74,7 @@ export function Header() {
                 </Button>
 
                 <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-500/20">
+                    <div className="h-8 w-8 rounded-lg bg-linear-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-500/20">
                         CM
                     </div>
                     <div className="flex flex-col">

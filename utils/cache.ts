@@ -9,9 +9,60 @@
 import type { CodeScopeExport, AnalysisData, ProcessDetectionResult, ViewMode, AppMode } from '@/types';
 import type { BranchData, CommitData, ContributorData, PRListItem } from '@/types/git';
 import type { GeneratedDiagram, AISettings, ChatSession } from '@/types/ai';
+import type { FetchMode } from '@/lib/analyzer';
+
+// ─── Typed Storage Keys ──────────────────────────────────────────────
+
+/** All known localStorage keys and their value types */
+export interface StorageKeyMap {
+  github_token: string;
+  codescope_mode: AppMode;
+  codescope_fetch_mode: FetchMode;
+  codescope_ai_settings: AISettings;
+}
+
+/** All known sessionStorage keys and their value types */
+export interface SessionKeyMap {
+  github_token: string;
+  analysis_import: string; // raw JSON
+}
+
+/** Type-safe read from localStorage with JSON parse for objects */
+export function getLocal<K extends keyof StorageKeyMap>(key: K): StorageKeyMap[K] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return null;
+    // Primitives stored as-is, objects need parse
+    try { return JSON.parse(raw) as StorageKeyMap[K]; }
+    catch { return raw as StorageKeyMap[K]; }
+  } catch { return null; }
+}
+
+/** Type-safe write to localStorage */
+export function setLocal<K extends keyof StorageKeyMap>(key: K, value: StorageKeyMap[K]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+  } catch { /* quota exceeded */ }
+}
+
+/** Type-safe read from sessionStorage */
+export function getSession<K extends keyof SessionKeyMap>(key: K): SessionKeyMap[K] | null {
+  if (typeof window === 'undefined') return null;
+  try { return sessionStorage.getItem(key) as SessionKeyMap[K] | null; }
+  catch { return null; }
+}
+
+/** Type-safe write to sessionStorage */
+export function setSession<K extends keyof SessionKeyMap>(key: K, value: SessionKeyMap[K]): void {
+  if (typeof window === 'undefined') return;
+  try { sessionStorage.setItem(key, value); }
+  catch { /* quota exceeded */ }
+}
 
 const CACHE_PREFIX = 'codescope_cache_';
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 interface CacheStoreState {
   data: AnalysisData | null;
@@ -72,7 +123,8 @@ export function buildExport(state: CacheStoreState): CodeScopeExport {
 export function saveToCache(repo: string, state: CacheStoreState): boolean {
   try {
     const exportData = buildExport(state);
-    const key = `${CACHE_PREFIX}${sanitizeKey(repo)}`;
+    // Include mode in key so repo1/simple and repo1/advanced don't collide
+    const key = `${CACHE_PREFIX}${sanitizeKey(repo)}_${state.mode}`;
     const json = JSON.stringify(exportData);
 
     // Check approximate size (localStorage has ~5-10MB limit per origin)
@@ -111,18 +163,30 @@ export function saveToCache(repo: string, state: CacheStoreState): boolean {
 /**
  * Load the complete analysis state from localStorage.
  */
-export function loadFromCache(repo: string): CodeScopeExport | null {
+export function loadFromCache(repo: string, mode?: string): CodeScopeExport | null {
   try {
-    const key = `${CACHE_PREFIX}${sanitizeKey(repo)}`;
+    // Try mode-specific key first, then fall back to generic key
+    const modeKey = mode ? `${CACHE_PREFIX}${sanitizeKey(repo)}_${mode}` : null;
+    const genericKey = `${CACHE_PREFIX}${sanitizeKey(repo)}`;
+    const key = (modeKey && localStorage.getItem(modeKey)) ? modeKey : genericKey;
     const json = localStorage.getItem(key);
     if (!json) return null;
 
     const data = JSON.parse(json) as CodeScopeExport;
 
     // Version check
-    if (data.version !== CACHE_VERSION) {
+    // Accept current and previous cache versions
+    if (data.version !== CACHE_VERSION && data.version !== CACHE_VERSION - 1) {
       console.info('Cache version mismatch, clearing stale cache');
       localStorage.removeItem(key);
+      return null;
+    }
+
+    // Verify the cache is for the correct repo
+    const cleanRepo = repo.replace(/^(https?:\/\/)?(www\.)?github\.com\//, '').replace(/\/$/, '');
+    const cachedRepo = data.repo?.replace(/^(https?:\/\/)?(www\.)?github\.com\//, '').replace(/\/$/, '');
+    if (cachedRepo && cachedRepo !== cleanRepo) {
+      console.info('Cache repo mismatch, ignoring stale cache');
       return null;
     }
 
@@ -176,8 +240,11 @@ export function restoreFromExport(
  */
 export function clearCache(repo: string): void {
   try {
-    const key = `${CACHE_PREFIX}${sanitizeKey(repo)}`;
-    localStorage.removeItem(key);
+    // Clear both mode-specific and generic keys
+    const sanitized = sanitizeKey(repo);
+    localStorage.removeItem(`${CACHE_PREFIX}${sanitized}`);
+    localStorage.removeItem(`${CACHE_PREFIX}${sanitized}_simple`);
+    localStorage.removeItem(`${CACHE_PREFIX}${sanitized}_advanced`);
     sessionStorage.removeItem(`analysis_${repo}_simple`);
     sessionStorage.removeItem(`analysis_${repo}_advanced`);
     sessionStorage.removeItem(`analysis_${repo}_public`);

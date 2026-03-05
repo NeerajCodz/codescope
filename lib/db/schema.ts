@@ -156,18 +156,34 @@ export async function saveAnalysisGraph(
  */
 export async function loadLatestAnalysis(repo: string, mode: DbMode = 'wasm'): Promise<LoadedGraph | null> {
   const db = getSurrealClient(mode);
-  if (!db.isConnected()) return null;
+  if (!db.isConnected()) {
+    const alive = await db.connect();
+    if (!alive) return null;
+  }
 
-  const analyses = await db.select<DbAnalysis>('analysis', `repo = '${repo}' ORDER BY created_at DESC LIMIT 1`);
+  // Use parameterized queries to prevent SQL injection
+  const analyses = await db.query<DbAnalysis>(
+    'SELECT * FROM analysis WHERE repo = $repo ORDER BY created_at DESC LIMIT 1',
+    { repo },
+  );
   if (!analyses.length) return null;
   const analysis = analyses[0];
   const rawId = typeof analysis.id === 'string' ? analysis.id : String(analysis.id);
   const analysisId = rawId.includes(':') ? rawId.split(':').pop()! : rawId;
 
   const [nodes, edges, processes] = await Promise.all([
-    db.select<DbGraphNode>('graph_node', `analysis_id = '${analysisId}'`),
-    db.select<DbGraphEdge>('graph_edge', `analysis_id = '${analysisId}'`),
-    db.select<DbProcess>('process', `analysis_id = '${analysisId}'`),
+    db.query<DbGraphNode>(
+      'SELECT * FROM graph_node WHERE analysis_id = $aid',
+      { aid: analysisId },
+    ),
+    db.query<DbGraphEdge>(
+      'SELECT * FROM graph_edge WHERE analysis_id = $aid',
+      { aid: analysisId },
+    ),
+    db.query<DbProcess>(
+      'SELECT * FROM process WHERE analysis_id = $aid',
+      { aid: analysisId },
+    ),
   ]);
 
   return {

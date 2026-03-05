@@ -48,10 +48,10 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Redirect back to home with token in URL fragment (client-side only)
-        // Using fragment to avoid sending token to server logs
+        // Redirect with token in URL fragment (hash) — NOT query param.
+        // Fragments are never sent to the server, so the token stays client-side.
         return NextResponse.redirect(
-            new URL(`/?github_token=${data.access_token}`, request.url)
+            new URL(`/#github_token=${data.access_token}`, request.url)
         );
     } catch (error) {
         console.error('GitHub OAuth error:', error);

@@ -71,7 +71,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" /> AI Settings
+            <Settings className="w-5 h-5" /> Settings
           </DialogTitle>
         </DialogHeader>
 

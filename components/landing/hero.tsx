@@ -37,11 +37,17 @@ export function Hero() {
   const [importLoading, setImportLoading] = useState(false);
 
   useEffect(() => {
-    const githubToken = searchParams.get('github_token');
+    // Check URL fragment first (OAuth redirects token via hash)
+    const hash = window.location.hash;
+    const hashToken = hash.startsWith('#github_token=') ? hash.slice('#github_token='.length) : null;
+    // Also check query param for backwards compat
+    const queryToken = searchParams.get('github_token');
+    const githubToken = hashToken || queryToken;
     if (githubToken) {
       setToken(githubToken);
       setShowTokenInput(true);
       sessionStorage.setItem('github_token', githubToken);
+      // Clean the token out of the URL
       window.history.replaceState({}, '', '/');
     } else {
       const stored = sessionStorage.getItem('github_token');
@@ -57,8 +63,13 @@ export function Hero() {
     setReposLoading(true);
     setRepoError(null);
 
-    fetch('https://api.github.com/user/repos?per_page=100&sort=updated&visibility=all', {
-      headers: { Authorization: `Bearer ${activeToken}`, Accept: 'application/vnd.github+json' },
+    fetch('/api/proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://api.github.com/user/repos?per_page=100&sort=updated&visibility=all',
+        token: activeToken,
+      }),
     })
       .then(async r => { if (!r.ok) throw new Error(); return r.json(); })
       .then((d: Array<{ id: number; full_name: string; private: boolean }>) => { if (alive) setRepos(d || []); })
@@ -73,8 +84,9 @@ export function Hero() {
   const navigateToAnalysis = (repo: string, userToken: string, mode: 'simple' | 'advanced') => {
     setLoading(true);
     setMode(mode);
+    // Store token in sessionStorage — NEVER put it in the URL
+    if (userToken.trim()) sessionStorage.setItem('github_token', userToken.trim());
     const params = new URLSearchParams({ repo, mode });
-    if (userToken.trim()) params.set('token', userToken.trim());
     router.push(`/analysis?${params.toString()}`);
   };
 

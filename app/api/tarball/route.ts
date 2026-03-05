@@ -54,8 +54,16 @@ export async function POST(request: NextRequest) {
 
     if (!tarRes.ok) {
       const err = await tarRes.text();
+      let msg = `Failed to download tarball: ${err}`;
+      if (tarRes.status === 403 || tarRes.status === 429) {
+        const reset = tarRes.headers.get('x-ratelimit-reset');
+        const resetTime = reset ? new Date(parseInt(reset) * 1000).toLocaleTimeString() : 'soon';
+        msg = `GitHub rate limit exceeded. Resets at ${resetTime}.${!token ? ' Add a token for higher limits.' : ''}`;
+      } else if (tarRes.status === 404) {
+        msg = 'Repository or branch not found. Check the URL and token permissions.';
+      }
       return NextResponse.json(
-        { error: `Failed to download tarball: ${err}` },
+        { error: msg },
         { status: tarRes.status }
       );
     }

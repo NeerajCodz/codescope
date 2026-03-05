@@ -135,7 +135,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
         ? (localStorage.getItem('codescope_fetch_mode') as FetchMode | null) || 'tarball'
         : 'tarball') as FetchMode,
     githubToken: (typeof window !== 'undefined'
-        ? sessionStorage.getItem('github_token') || ''
+        ? sessionStorage.getItem('github_token') || localStorage.getItem('github_token') || ''
         : ''),
 
     // Branch
@@ -193,7 +193,15 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
     },
     setGithubToken: (githubToken) => {
         set({ githubToken });
-        try { sessionStorage.setItem('github_token', githubToken); } catch { /* */ }
+        try {
+            sessionStorage.setItem('github_token', githubToken);
+            // Also persist to localStorage so login survives browser restarts
+            if (githubToken) {
+                localStorage.setItem('github_token', githubToken);
+            } else {
+                localStorage.removeItem('github_token');
+            }
+        } catch { /* */ }
     },
 
     // Branch actions

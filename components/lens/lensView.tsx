@@ -1041,6 +1041,8 @@ function BlamePanel({ data, graphData }: {
     const [blameTab, setBlameTab] = useState<BlameTab>('code');
     const [showBlameGutter, setShowBlameGutter] = useState(true);
     const [diffMode, setDiffMode] = useState(false);
+    const [loadingContent, setLoadingContent] = useState(false);
+    const { owner, repoName, githubToken } = useAnalysisStore();
     const tree = useMemo(() => data ? buildFileTree(data) : null, [data]);
 
     const initialExpanded = useMemo(() => {
@@ -1082,6 +1084,37 @@ function BlamePanel({ data, graphData }: {
             return full === selectedFile;
         }) || null;
     }, [data, selectedFile]);
+
+    // On-demand content loading for files that weren't fetched during analysis
+    useEffect(() => {
+        if (!selectedFileData || selectedFileData.content || loadingContent) return;
+        if (!owner || !repoName) return;
+        const MAX_SIZE = 500_000; // 500KB
+        if (selectedFileData.size > MAX_SIZE) return;
+
+        let cancelled = false;
+        setLoadingContent(true);
+
+        (async () => {
+            try {
+                const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/contents/${encodeURIComponent(selectedFileData.path)}`;
+                const res = await fetch('/api/proxy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, token: githubToken || undefined }),
+                });
+                if (!res.ok) return;
+                const json = await res.json();
+                if (cancelled || !json.content || json.encoding !== 'base64') return;
+                const content = atob(json.content.replace(/\n/g, ''));
+                // Mutate in-place so the data persists for the session
+                selectedFileData.content = content;
+                selectedFileData.lines = content.split('\n').length;
+            } catch { /* ignore fetch errors */ }
+            finally { if (!cancelled) setLoadingContent(false); }
+        })();
+        return () => { cancelled = true; };
+    }, [selectedFileData, owner, repoName, githubToken, loadingContent]);
 
     // Ranked commits for this file using scoring
     const fileCommits = useMemo(() => {
@@ -1361,9 +1394,24 @@ function BlamePanel({ data, graphData }: {
                                 ) : (
                                     <div className="flex items-center justify-center h-64 text-slate-500 text-sm">
                                         <div className="text-center">
-                                            <File className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                            <p>File content not available</p>
-                                            <p className="text-xs text-slate-600 mt-1">Content is loaded during analysis</p>
+                                            {loadingContent ? (
+                                                <>
+                                                    <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin opacity-50" />
+                                                    <p>Loading file content…</p>
+                                                </>
+                                            ) : selectedFileData.size > 500_000 ? (
+                                                <>
+                                                    <File className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                                    <p>File too large to display</p>
+                                                    <p className="text-xs text-slate-600 mt-1">{(selectedFileData.size / 1024).toFixed(0)} KB</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <File className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                                    <p>File content not available</p>
+                                                    <p className="text-xs text-slate-600 mt-1">Binary or unsupported file type</p>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 )}

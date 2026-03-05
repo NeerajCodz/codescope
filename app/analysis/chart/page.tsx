@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAnalysisStore } from '@/components/context/analysisContext';
 import { ChartView } from '@/components/chart/chartView';
 import { GraphView } from '@/components/chart/graphView';
-import { ProcessesView } from '@/components/charts/processesView';
+import { ProcessesView } from '@/components/chart/processesView';
 import { SurrealLiveGraph } from '@/components/chart/liveGraph';
 import { Button } from '@/components/ui/button';
 import { Bot, Network, Workflow, Share2 } from 'lucide-react';

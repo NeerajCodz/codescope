@@ -32,7 +32,18 @@ export async function POST(request: NextRequest) {
       const url = `https://api.github.com${path}`;
       const res = await fetch(url, { headers });
       if (!res.ok) {
-        // Don't throw - return null and let caller handle it
+        // Surface rate-limiting as a top-level error so the client can react
+        if (res.status === 403 || res.status === 429) {
+          const remaining = res.headers.get('x-ratelimit-remaining');
+          if (remaining === '0' || res.status === 429) {
+            const reset = res.headers.get('x-ratelimit-reset');
+            const resetTime = reset ? new Date(parseInt(reset) * 1000).toLocaleTimeString() : 'soon';
+            throw Object.assign(
+              new Error(`GitHub rate limit exceeded. Resets at ${resetTime}.${!token ? ' Add a token for 5,000 req/hr.' : ''}`),
+              { status: 429 }
+            );
+          }
+        }
         return null;
       }
       return res.json();
@@ -139,10 +150,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ commits, branches, contributors, tags, stats });
 
   } catch (error) {
+    const status = (error as { status?: number }).status || 500;
     console.error('Git data fetch error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to fetch git data' },
-      { status: 500 }
+      { status }
     );
   }
 }

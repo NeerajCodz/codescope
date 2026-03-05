@@ -203,12 +203,36 @@ let _apiClient: SurrealClient | null = null;
 let _wasmClient: SurrealClient | null = null;
 
 /**
+ * Check whether the env-based API config looks valid.
+ * Requires at minimum a non-default URL plus either a token or user+pass.
+ */
+function isApiConfigValid(): boolean {
+  const url = process.env.NEXT_PUBLIC_SURREALDB_URL || process.env.SURREALDB_URL || '';
+  if (!url || url === 'http://localhost:8000') return false;
+
+  const token = process.env.SURREALDB_TOKEN || process.env.NEXT_PUBLIC_SURREALDB_TOKEN || '';
+  const user = process.env.SURREALDB_USER || '';
+  const pass = process.env.SURREALDB_PASS || '';
+
+  // Need at least a JWT token or username+password
+  return !!(token || (user && pass));
+}
+
+/**
  * Get a SurrealDB client instance.
  * - `'api'` mode: For advanced/server-side use (SurrealDB Cloud or self-hosted)
  * - `'wasm'` mode: For simple/client-side use (in-browser via IndexedDB)
+ *
+ * If API mode is requested but the config is invalid/missing, falls back to WASM.
  */
 export function getSurrealClient(mode: DbMode = 'wasm', config?: Partial<SurrealConfig>): SurrealClient {
   if (mode === 'api') {
+    // Validate config — fall back to WASM when API config is missing or incomplete
+    if (!isApiConfigValid() && !config?.url) {
+      console.warn('SurrealDB API config invalid/missing — falling back to WASM mode');
+      if (!_wasmClient) _wasmClient = new SurrealClient('wasm', config);
+      return _wasmClient;
+    }
     if (!_apiClient) _apiClient = new SurrealClient('api', config);
     return _apiClient;
   }

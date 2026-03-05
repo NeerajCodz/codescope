@@ -1,7 +1,7 @@
 // API endpoint analyzer - detects Created and Used APIs in codebase
 
 import { AnalysisData } from '@/types';
-import { CreatedAPI, UsedAPI, APIStats, ServiceGroup } from '@/types/apiAnalysis';
+import { CreatedAPI, UsedAPI, APIStats, ServiceGroup, APIResponseBody } from '@/types/apiAnalysis';
 
 // Extract route params from path like /api/users/:id → ['id']
 function extractRouteParams(path: string): string[] {
@@ -18,17 +18,19 @@ function extractHandlerDetails(lines: string[], startLine: number): {
   queryParams: string[];
   bodyFields: string[];
   responseFields: string[];
+  responseBodies: APIResponseBody[];
   middleware: string[];
   description: string;
 } {
   const queryParams: string[] = [];
   const bodyFields: string[] = [];
   const responseFields: string[] = [];
+  const responseBodies: APIResponseBody[] = [];
   const middleware: string[] = [];
   let description = '';
 
-  // Look at surrounding lines (up to 40 lines after handler definition)
-  const region = lines.slice(startLine - 1, startLine + 40);
+  // Look at surrounding lines (up to 80 lines after handler definition for better coverage)
+  const region = lines.slice(startLine - 1, startLine + 80);
   const regionText = region.join('\n');
 
   // Query params: searchParams.get('x'), query.x, req.query.x
@@ -45,11 +47,61 @@ function extractHandlerDetails(lines: string[], startLine: number): {
     if (!bodyFields.includes(m[1])) bodyFields.push(m[1]);
   }
 
-  // Response structure: NextResponse.json({ x, y }), res.json({ x })
-  const jsonResp = regionText.match(/\.json\(\s*\{([^}]{1,200})\}/);
-  if (jsonResp) {
-    const fields = jsonResp[1].matchAll(/(\w+)\s*[,:]/g);
-    for (const m of fields) responseFields.push(m[1]);
+  // Extract ALL response bodies with status codes
+
+  // Pattern: NextResponse.json({ fields }, { status: NNN })
+  const nextResponseMatches = regionText.matchAll(
+    /NextResponse\.json\(\s*\{([^}]{1,500})\}\s*(?:,\s*\{\s*status:\s*(\d+)\s*\})?/g
+  );
+  for (const m of nextResponseMatches) {
+    const fields: string[] = [];
+    const fieldMatches = m[1].matchAll(/(\w+)\s*[,:]/g);
+    for (const f of fieldMatches) fields.push(f[1]);
+    const status = m[2] ? parseInt(m[2], 10) : 200;
+    responseBodies.push({ status, label: getStatusLabel(status), fields, example: `{${m[1].trim()}}` });
+  }
+
+  // Pattern: res.json({ fields }) or res.status(NNN).json({ fields })
+  const resJsonMatches = regionText.matchAll(
+    /res(?:\.status\((\d+)\))?\.json\(\s*\{([^}]{1,500})\}/g
+  );
+  for (const m of resJsonMatches) {
+    const fields: string[] = [];
+    const fieldMatches = m[2].matchAll(/(\w+)\s*[,:]/g);
+    for (const f of fieldMatches) fields.push(f[1]);
+    const status = m[1] ? parseInt(m[1], 10) : 200;
+    responseBodies.push({ status, label: getStatusLabel(status), fields, example: `{${m[2].trim()}}` });
+  }
+
+  // Pattern: new Response(JSON.stringify({ ... }), { status: NNN })
+  const responseConstructor = regionText.matchAll(
+    /new\s+Response\(\s*JSON\.stringify\(\s*\{([^}]{1,500})\}\)\s*,\s*\{[^}]*status:\s*(\d+)/g
+  );
+  for (const m of responseConstructor) {
+    const fields: string[] = [];
+    const fieldMatches = m[1].matchAll(/(\w+)\s*[,:]/g);
+    for (const f of fieldMatches) fields.push(f[1]);
+    const status = m[2] ? parseInt(m[2], 10) : 200;
+    responseBodies.push({ status, label: getStatusLabel(status), fields });
+  }
+
+  // Deduplicate by status code, keep first found
+  const seen = new Set<number>();
+  const deduped: APIResponseBody[] = [];
+  for (const rb of responseBodies) {
+    if (!seen.has(rb.status)) {
+      seen.add(rb.status);
+      deduped.push(rb);
+    }
+  }
+  deduped.sort((a, b) => a.status - b.status);
+
+  // Legacy responseFields from first success response
+  const successBody = deduped.find(r => r.status >= 200 && r.status < 300);
+  if (successBody) {
+    responseFields.push(...successBody.fields);
+  } else if (deduped.length > 0) {
+    responseFields.push(...deduped[0].fields);
   }
 
   // Middleware: from comment or decorators
@@ -65,7 +117,19 @@ function extractHandlerDetails(lines: string[], startLine: number): {
     if (!description && lineComment) description = lineComment[1].trim();
   }
 
-  return { queryParams, bodyFields, responseFields, middleware, description };
+  return { queryParams, bodyFields, responseFields, responseBodies: deduped, middleware, description };
+}
+
+function getStatusLabel(status: number): string {
+  const labels: Record<number, string> = {
+    200: 'Success', 201: 'Created', 204: 'No Content',
+    301: 'Moved Permanently', 302: 'Found', 304: 'Not Modified',
+    400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden',
+    404: 'Not Found', 405: 'Method Not Allowed', 409: 'Conflict',
+    422: 'Unprocessable Entity', 429: 'Too Many Requests',
+    500: 'Internal Server Error', 502: 'Bad Gateway', 503: 'Service Unavailable',
+  };
+  return labels[status] || `Status ${status}`;
 }
 
 // Detect API routes/handlers defined in the codebase
@@ -101,6 +165,7 @@ export function detectCreatedAPIs(data: AnalysisData): CreatedAPI[] {
           queryParams: details.queryParams,
           bodyFields: details.bodyFields,
           responseFields: details.responseFields,
+          responseBodies: details.responseBodies.length > 0 ? details.responseBodies : undefined,
         });
       }
 
@@ -122,6 +187,7 @@ export function detectCreatedAPIs(data: AnalysisData): CreatedAPI[] {
           queryParams: details.queryParams,
           bodyFields: details.bodyFields,
           responseFields: details.responseFields,
+          responseBodies: details.responseBodies.length > 0 ? details.responseBodies : undefined,
         });
       }
 
@@ -144,6 +210,7 @@ export function detectCreatedAPIs(data: AnalysisData): CreatedAPI[] {
           queryParams: details.queryParams,
           bodyFields: details.bodyFields,
           responseFields: details.responseFields,
+          responseBodies: details.responseBodies.length > 0 ? details.responseBodies : undefined,
         });
       }
 
@@ -162,6 +229,7 @@ export function detectCreatedAPIs(data: AnalysisData): CreatedAPI[] {
           queryParams: details.queryParams,
           bodyFields: details.bodyFields,
           responseFields: details.responseFields,
+          responseBodies: details.responseBodies.length > 0 ? details.responseBodies : undefined,
         });
       }
     });
