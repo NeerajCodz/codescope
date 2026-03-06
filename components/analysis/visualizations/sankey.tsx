@@ -3,8 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { sankey as d3Sankey, sankeyLinkHorizontal, type SankeyNode, type SankeyLink, type SankeyGraph } from 'd3-sankey';
-import { useAnalysisStore } from '@/components/context/analysis-context';
-import { NodeDetailsModal } from '@/components/modals/node-details-modal';
+import { useAnalysisStore } from '@/components/context/analysisContext';
+import { NodeDetailsModal } from '@/components/modals/nodeDetails';
 import { FileNode } from '@/types';
 import theme from '@/utils/themes';
 

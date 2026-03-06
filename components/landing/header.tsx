@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Github, LogOut, Sparkles } from 'lucide-react';
 import Link from 'next/link';
@@ -12,38 +12,11 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-
-type GitHubUser = {
-    login: string;
-    avatar_url?: string;
-};
+import { useGitHubUser } from '@/hooks/useGitHubUser';
 
 export function Header() {
-    const [token, setToken] = useState<string | null>(null);
-    const [user, setUser] = useState<GitHubUser | null>(null);
+    const { token, user, logout } = useGitHubUser();
     const [logoutOpen, setLogoutOpen] = useState(false);
-
-    useEffect(() => {
-        const storedToken = sessionStorage.getItem('github_token');
-        setToken(storedToken);
-        if (storedToken) {
-            fetch('https://api.github.com/user', {
-                headers: {
-                    Authorization: `Bearer ${storedToken}`,
-                },
-            })
-                .then(async (res) => {
-                    if (!res.ok) throw new Error('Failed to fetch user');
-                    return res.json();
-                })
-                .then((data: GitHubUser) => setUser({ login: data.login, avatar_url: data.avatar_url }))
-                .catch(() => {
-                    sessionStorage.removeItem('github_token');
-                    setToken(null);
-                    setUser(null);
-                });
-        }
-    }, []);
 
     const handleGitHubLogin = () => {
         const clientId = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID;
@@ -57,9 +30,7 @@ export function Header() {
     };
 
     const handleLogout = () => {
-        sessionStorage.removeItem('github_token');
-        setToken(null);
-        setUser(null);
+        logout();
         setLogoutOpen(false);
     };
 

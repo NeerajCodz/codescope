@@ -70,7 +70,7 @@ export function Features() {
                         className="group p-6 rounded-xl bg-card border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-1"
                     >
                         <div className={`w-12 h-12 rounded-lg bg-muted/50 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                            <feature.icon className={`w-6 h-6 ${feature.color}`} />
+                            {(() => { const Icon = feature.icon; return <Icon className={`w-6 h-6 ${feature.color}`} />; })()}
                         </div>
                         <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
                         <p className="text-sm text-muted-foreground leading-relaxed">

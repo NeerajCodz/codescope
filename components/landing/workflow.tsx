@@ -51,11 +51,11 @@ export function Workflow() {
                         <div key={index} className="relative flex flex-col items-center text-center group">
                             {/* Icon Circle */}
                             <div className={`relative w-32 h-32 rounded-3xl ${step.color} flex items-center justify-center mb-8 transition-all duration-500 group-hover:scale-105 group-hover:shadow-2xl group-hover:shadow-primary/20 border border-white/5 backdrop-blur-sm`}>
-                                <step.icon className="w-12 h-12" />
+                                {(() => { const Icon = step.icon; return <Icon className="w-12 h-12" />; })()}
 
                                 {/* Floating Detail Icon */}
                                 <div className="absolute -top-3 -right-3 w-10 h-10 rounded-full bg-background border border-border flex items-center justify-center shadow-lg transform group-hover:rotate-12 transition-transform duration-300">
-                                    <step.detailIcon className="w-5 h-5 text-muted-foreground" />
+                                    {(() => { const DetailIcon = step.detailIcon; return <DetailIcon className="w-5 h-5 text-muted-foreground" />; })()}
                                 </div>
                             </div>
 

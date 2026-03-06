@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import {
     ZoomIn,
     ZoomOut,
@@ -9,15 +9,17 @@ import {
     Info
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAnalysisStore } from '@/components/context/analysis-context';
-import { ForceGraph } from './visualizations/force-graph';
-import { ClusterGraph } from './visualizations/cluster-graph';
+import { useAnalysisStore } from '@/components/context/analysisContext';
+import { ForceGraph } from './visualizations/forceGraph';
+import { ClusterGraph } from './visualizations/clusterGraph';
 import { Treemap } from './visualizations/treemap';
 import { Matrix } from './visualizations/matrix';
 import { Dendrogram } from './visualizations/dendrogram';
 import { Sankey } from './visualizations/sankey';
 import { Bundle } from './visualizations/bundle';
 import { Arc } from './visualizations/arc';
+
+const ForceGraph3D = lazy(() => import('@/components/scope/visualizations/forceGraph3D'));
 
 export function Canvas() {
     const { viewMode, data, loading, error } = useAnalysisStore();
@@ -60,6 +62,15 @@ export function Canvas() {
             case 'bundle': return <Bundle key={`bundle-${refreshKey}`} />;
             case 'arc': return <Arc key={`arc-${refreshKey}`} />;
             case 'cluster': return <ClusterGraph key={`cluster-${refreshKey}`} />;
+            case 'force3d': return (
+                <Suspense fallback={
+                    <div className="flex items-center justify-center h-full">
+                        <div className="w-8 h-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                    </div>
+                }>
+                    <ForceGraph3D key={`force3d-${refreshKey}`} />
+                </Suspense>
+            );
             default: return <ForceGraph key={`force-${refreshKey}`} />;
         }
     };

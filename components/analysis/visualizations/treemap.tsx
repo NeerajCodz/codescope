@@ -2,10 +2,10 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
-import { useAnalysisStore } from '@/components/context/analysis-context';
+import { useAnalysisStore } from '@/components/context/analysisContext';
 import { FileNode } from '@/types';
 import theme from '@/utils/themes';
-import { NodeDetailsModal } from '@/components/modals/node-details-modal';
+import { NodeDetailsModal } from '@/components/modals/nodeDetails';
 
 export function Treemap() {
     const { data } = useAnalysisStore();

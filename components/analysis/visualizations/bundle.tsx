@@ -2,9 +2,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
-import { useAnalysisStore } from '@/components/context/analysis-context';
-import { NodeDetailsModal } from '@/components/modals/node-details-modal';
-import { ConnectionDetailsModal } from '@/components/modals/connection-details-modal';
+import { useAnalysisStore } from '@/components/context/analysisContext';
+import { NodeDetailsModal } from '@/components/modals/nodeDetails';
+import { ConnectionDetailsModal } from '@/components/modals/connectionDetails';
 import { FileNode } from '@/types';
 import theme from '@/utils/themes';
 

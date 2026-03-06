@@ -17,6 +17,10 @@ export async function GET(request: NextRequest) {
         );
     }
 
+    // Build the same redirect_uri that was sent in the authorization request
+    const origin = request.nextUrl.origin;
+    const redirectUri = `${origin}/api/auth/github`;
+
     try {
         // Exchange code for access token
         const tokenResponse = await fetch(
@@ -31,6 +35,7 @@ export async function GET(request: NextRequest) {
                     client_id: clientId,
                     client_secret: clientSecret,
                     code,
+                    redirect_uri: redirectUri,
                 }),
             }
         );
@@ -43,10 +48,10 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Redirect back to home with token in URL fragment (client-side only)
-        // Using fragment to avoid sending token to server logs
+        // Redirect with token in URL fragment (hash) — NOT query param.
+        // Fragments are never sent to the server, so the token stays client-side.
         return NextResponse.redirect(
-            new URL(`/?github_token=${data.access_token}`, request.url)
+            new URL(`/#github_token=${data.access_token}`, request.url)
         );
     } catch (error) {
         console.error('GitHub OAuth error:', error);

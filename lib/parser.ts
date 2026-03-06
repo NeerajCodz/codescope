@@ -592,3 +592,149 @@ export const Parser = {
         return callMap;
     }
 };
+
+/**
+ * Parse raw file contents (from client-side GitHub API fetch)
+ * into a full AnalysisData structure. Used in "Simple" mode.
+ */
+export function parseFilesFromContents(
+    contents: Map<string, string>,
+    repoUrl: string
+): import('@/types').AnalysisData {
+    const fileMap = new Map<string, import('@/types').FileNode>();
+
+    // Build FileNodes from all content entries
+    for (const [path, content] of contents) {
+        const pathParts = path.split('/');
+        const name = pathParts.pop() || path;
+        const folder = pathParts.join('/') || 'root';
+        const ext = name.includes('.') ? '.' + name.split('.').pop()!.toLowerCase() : '';
+        const isCode = Parser.isCode(name);
+        const lines = content.split('\n').length;
+        const size = new Blob([content]).size;
+
+        // Determine layer heuristic
+        let layer: string | undefined;
+        if (path.includes('/components/') || path.includes('/ui/')) layer = 'ui';
+        else if (path.includes('/services/') || path.includes('/api/') || path.includes('/lib/')) layer = 'service';
+        else if (path.includes('/utils/') || path.includes('/helpers/')) layer = 'util';
+        else if (path.includes('/data/') || path.includes('/models/') || path.includes('/types/')) layer = 'data';
+        else if (path.includes('/config/') || path.includes('.config')) layer = 'config';
+        else if (path.includes('/test') || path.includes('.test.') || path.includes('.spec.')) layer = 'test';
+
+        const node: import('@/types').FileNode = {
+            name,
+            path,
+            folder,
+            isCode,
+            content,
+            lines,
+            size,
+            layer,
+            functions: [],
+            variables: [],
+            rawImports: [],
+            children: [],
+        };
+
+        if (isCode && size < 200000) {
+            try {
+                node.functions = Parser.extract(content, name);
+                node.variables = Parser.extractVariables(content, name);
+                const score = Parser.calcComplexity(content);
+                node.complexity = { score, level: score > 30 ? 'high' : score > 15 ? 'medium' : 'low' };
+                node.securityIssues = Parser.detectSecurity(content, path);
+                node.rawImports = Parser.detectImports(content, path);
+            } catch (e) {
+                console.warn(`Parse error for ${path}:`, e);
+            }
+        }
+
+        fileMap.set(path, node);
+    }
+
+    const files = Array.from(fileMap.values());
+
+    // Build connections from imports
+    const connections: import('@/types').Connection[] = [];
+    for (const file of files) {
+        if (!file.rawImports) continue;
+        for (const imp of file.rawImports) {
+            const target = files.find(f => {
+                const p = f.path.replace(/\.[^/.]+$/, '');
+                const i = imp.replace(/\.[^/.]+$/, '');
+                return f.path === imp || f.path.endsWith('/' + imp) || p === i || p.endsWith('/' + i);
+            });
+            if (target && target.path !== file.path) {
+                connections.push({ source: file.path, target: target.path, fn: 'import', count: 1, lines: [] });
+            }
+        }
+    }
+
+    // Detect patterns
+    const patterns: import('@/types').Pattern[] = [];
+    const patternBuckets: Record<string, string[]> = {
+        Component: [], Hook: [], Provider: [], Singleton: [], Factory: [], Observer: [],
+    };
+    for (const file of files) {
+        if (!file.content) continue;
+        const c = file.content.toLowerCase();
+        if (c.includes('static getinstance') || c.includes('static instance')) patternBuckets.Singleton.push(file.path);
+        if (c.includes('createinstance') || c.includes('factory.')) patternBuckets.Factory.push(file.path);
+        if (c.includes('subscribe(') || c.includes('notify(')) patternBuckets.Observer.push(file.path);
+        if (c.includes('provider') && (c.includes('context') || c.includes('state'))) patternBuckets.Provider.push(file.path);
+        if (file.name.startsWith('use') && file.path.includes('/hook')) patternBuckets.Hook.push(file.path);
+        if ((c.includes('return (') || c.includes('return <')) && file.path.includes('/component')) patternBuckets.Component.push(file.path);
+    }
+    for (const [name, paths] of Object.entries(patternBuckets)) {
+        if (paths.length > 0) {
+            patterns.push({
+                name,
+                desc: `${paths.length} ${name} pattern instances`,
+                severity: 'info',
+                metrics: {},
+                files: paths.map(p => {
+                    const f = fileMap.get(p)!;
+                    return { name: f.name, path: f.path, fns: f.functions?.length || 0, lines: f.lines || 0 };
+                }),
+                icon: name === 'Component' ? '🧩' : name === 'Hook' ? '🪝' : '🏗️',
+            });
+        }
+    }
+
+    // Security issues
+    const securityIssues = files.flatMap(f => f.securityIssues || []);
+
+    // Stats
+    const allFunctions = files.flatMap(f => f.functions || []);
+    const totalLines = files.reduce((a, f) => a + (f.lines || 0), 0);
+
+    // Languages
+    const languages: Record<string, number> = {};
+    for (const file of files) {
+        if (!file.isCode) continue;
+        const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '';
+        const lang = ext.replace('.', '') || 'unknown';
+        languages[lang] = (languages[lang] || 0) + 1;
+    }
+
+    return {
+        files,
+        connections,
+        stats: {
+            files: files.length,
+            codeFiles: files.filter(f => f.isCode).length,
+            functions: allFunctions.length,
+            dead: 0,
+            connections: connections.length,
+            avgComplexity: Math.round(files.reduce((a, f) => a + (f.complexity?.score || 0), 0) / (files.filter(f => f.isCode).length || 1)),
+        },
+        issues: [],
+        patterns,
+        securityIssues,
+        duplicates: [],
+        layerViolations: [],
+        languages,
+        totalLines,
+    };
+}

@@ -6,7 +6,7 @@ import { Features } from '@/components/landing/features';
 import { Header } from '@/components/landing/header';
 import { FAQ } from '@/components/landing/faq';
 import { Footer } from '@/components/landing/footer';
-import { AmbientBackground } from '@/components/landing/ambient-background';
+import { AmbientBackground } from '@/components/landing/ambientBackground';
 import { Workflow } from '@/components/landing/workflow';
 
 function HeroWrapper() {

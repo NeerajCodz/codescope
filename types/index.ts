@@ -12,6 +12,7 @@ export interface FileNode {
     complexity?: ComplexityScore;
     securityIssues?: SecurityIssue[];
     rawImports?: string[];
+    children?: FileNode[];
 }
 
 export interface FunctionCallSite {
@@ -190,4 +191,92 @@ export type ViewMode =
     | 'dendrogram'
     | 'sankey'
     | 'bundle'
-    | 'arc';
+    | 'arc'
+    | 'force3d';
+
+// ── Hybrid Mode ──
+export type AppMode = 'simple' | 'advanced';
+
+// ── Process Detection ──
+export interface ProcessNode {
+    id: string;
+    label: string;
+    entryPoint: string;
+    terminal: string[];
+    processType: string;
+    stepCount: number;
+    clusters: number[];
+    trace: string[];          // ordered node IDs
+    traceFiles: string[];     // corresponding file paths
+    isCrossFile?: boolean;    // spans multiple files
+    isCrossFolder?: boolean;  // spans multiple folders
+}
+
+export interface ProcessStep {
+    id: string;
+    label: string;
+    file: string;
+    depth: number;
+    isEntry: boolean;
+    isTerminal: boolean;
+}
+
+export interface ProcessDetectionResult {
+    processes: ProcessNode[];
+    totalEntryPoints: number;
+    totalTerminals: number;
+    avgChainLength: number;
+    crossFileCount?: number;
+    intraFileCount?: number;
+}
+
+// ── Unified Export / Import ──
+
+/**
+ * Complete CodeScope project export containing ALL analysis data.
+ * Used for full save/restore, import/export, and local caching.
+ */
+export interface CodeScopeExport {
+    /** Schema version for forward compatibility */
+    version: number;
+    /** Timestamp of the export */
+    exportedAt: string;
+    /** Repository identifier (owner/repo) */
+    repo: string;
+    /** Branch that was selected at time of export */
+    selectedBranch: string;
+    /** Default branch name */
+    defaultBranch: string;
+    /** App mode used during analysis */
+    mode: AppMode;
+
+    // ── Core Analysis ──
+    analysis: AnalysisData | null;
+
+    // ── Git Intelligence ──
+    branches: import('@/types/git').BranchData[];
+    commits: import('@/types/git').CommitData[];
+    contributors: import('@/types/git').ContributorData[];
+    prs: import('@/types/git').PRListItem[];
+    /** Per-branch commit lists for multi-branch graph */
+    branchCommits: Record<string, import('@/types/git').CommitData[]> | null;
+
+    // ── Process Detection ──
+    processes: ProcessDetectionResult | null;
+
+    // ── AI / Diagrams ──
+    diagrams: import('@/types/ai').GeneratedDiagram[];
+    aiSettings?: Partial<import('@/types/ai').AISettings>;
+    chatSession?: import('@/types/ai').ChatSession | null;
+
+    // ── API Analysis ──
+    apiAnalysis?: {
+        created: import('@/types/apiAnalysis').CreatedAPI[];
+        used: import('@/types/apiAnalysis').UsedAPI[];
+        stats: import('@/types/apiAnalysis').APIStats;
+        services: import('@/types/apiAnalysis').ServiceGroup[];
+    } | null;
+
+    // ── View / UI State ──
+    viewMode: ViewMode;
+}
